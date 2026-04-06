@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const { user, logout } = useAuth()
   const router = useRouter()
   const [tab, setTab] = useState('create')
-  const [mode, setMode] = useState('music')
+  const mode = 'music'
   const [joinCode, setJoinCode] = useState('')
   const [creating, setCreating] = useState(false)
   const [joining, setJoining] = useState(false)
@@ -117,27 +117,6 @@ export default function DashboardPage() {
           <div style={{ padding: '36px 32px' }}>
             {tab === 'create' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-                <div>
-                  <div style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 16 }}>Room Mode</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    {[
-                      { val: 'music', icon: '🎵', label: 'Music', desc: 'Playlists & tracks' },
-                      { val: 'video', icon: '📺', label: 'Video', desc: 'Watch together' },
-                    ].map((m) => (
-                      <button key={m.val} onClick={() => setMode(m.val)} style={{
-                        background: mode === m.val ? 'rgba(0,255,136,0.08)' : 'var(--glass)',
-                        border: `1px solid ${mode === m.val ? 'rgba(0,255,136,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                        borderRadius: 10, padding: '20px 16px', cursor: 'pointer', textAlign: 'left',
-                        transition: 'all 0.2s',
-                      }}>
-                        <div style={{ fontSize: '1.8rem', marginBottom: 8 }}>{m.icon}</div>
-                        <div style={{ fontFamily: 'Oswald', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: mode === m.val ? 'var(--green)' : 'var(--text)', marginBottom: 4 }}>{m.label}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{m.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <div style={{ background: 'rgba(0,255,136,0.04)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', fontSize: '0.875rem', color: 'var(--text-dim)' }}>
                   <span style={{ color: 'var(--green)', fontWeight: 600 }}>You'll be the host.</span> Control playback, manage the queue, and invite friends with a 6-digit code.
                 </div>
