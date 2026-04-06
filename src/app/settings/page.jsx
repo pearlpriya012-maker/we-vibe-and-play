@@ -1,7 +1,7 @@
 'use client'
 // src/app/settings/page.jsx
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { updateProfile, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
@@ -23,6 +23,7 @@ function Avatar({ user, size = 72 }) {
 export default function SettingsPage() {
   const { user, logout } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [displayName, setDisplayName] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
@@ -34,6 +35,36 @@ export default function SettingsPage() {
     if (!user) { router.replace('/auth/login'); return }
     setDisplayName(user.displayName || '')
   }, [user])
+
+  // ── Handle YouTube OAuth callback ──
+  useEffect(() => {
+    const yt = searchParams.get('yt')
+    if (!yt || !user) return
+    if (yt === 'success') {
+      // Read tokens from cookies set by the callback route
+      const getCookie = (name) => {
+        const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'))
+        return match ? decodeURIComponent(match[1]) : null
+      }
+      const accessToken = getCookie('yt_access_token')
+      const refreshToken = getCookie('yt_refresh_token')
+      if (accessToken) {
+        updateDoc(doc(db, 'users', user.uid), {
+          youtubeAccessToken: accessToken,
+          youtubeRefreshToken: refreshToken || '',
+        }).then(() => {
+          toast.success('YouTube linked successfully! 🎵')
+          router.replace('/settings')
+        }).catch(() => toast.error('Could not save YouTube token'))
+      } else {
+        toast.error('YouTube linking failed — token missing')
+        router.replace('/settings')
+      }
+    } else if (yt === 'error') {
+      toast.error('YouTube linking failed. Please try again.')
+      router.replace('/settings')
+    }
+  }, [searchParams, user])
 
   if (!user) return null
 
