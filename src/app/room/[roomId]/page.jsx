@@ -668,6 +668,7 @@ export default function RoomPage() {
   const [mobileTab, setMobileTab] = useState('player')
   const [volume, setVolume] = useState(100)
   const [muted, setMuted] = useState(false)
+  const [mobileTapped, setMobileTapped] = useState(false)
   const [showVolume, setShowVolume] = useState(false)
 
   const playerRef = useRef(null)
@@ -778,6 +779,8 @@ export default function RoomPage() {
       } else {
         e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       }
+      // On desktop, mark as tapped (no overlay needed); on mobile, overlay handles it
+      if (!isMobile) setMobileTapped(true)
     } catch {}
   }
 
@@ -889,7 +892,7 @@ export default function RoomPage() {
   // ─── Shared: YouTube player element (kept in DOM always) ───
   const ytPlayerEl = room.currentTrack ? (
     <div style={musicMode
-      ? { position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: -1, top: 0, left: 0 }
+      ? { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 }
       : isMobile
         ? { width: '100%', aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.8)', flexShrink: 0 }
         : { width: '100%', maxWidth: videoFocus ? 1100 : 700, aspectRatio: '16/9', borderRadius: videoFocus ? 8 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)', flexShrink: 0 }
@@ -897,7 +900,7 @@ export default function RoomPage() {
       <YouTube
         ref={playerRef}
         videoId={room.currentTrack.videoId}
-        opts={{ width: '640', height: '360', playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0, playsinline: 1 } }}
+        opts={{ width: '640', height: '360', playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
         onReady={handlePlayerReady}
         onStateChange={handleStateChange}
         style={{ width: '100%', height: '100%' }}
@@ -1016,6 +1019,17 @@ export default function RoomPage() {
 
         {/* Mobile Content Area */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
+
+          {/* Mobile tap-to-unlock audio overlay */}
+          {isMobile && !mobileTapped && room?.currentTrack && (
+            <div onClick={() => { setMobileTapped(true); try { ytPlayerRef.current?.playVideo?.() } catch {} }}
+              style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', cursor: 'pointer' }}>
+              <div style={{ fontSize: '3rem' }}>🎵</div>
+              <div style={{ fontFamily: 'Oswald', fontSize: '1rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#fff' }}>Tap to Start Playing</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Mobile requires a tap to unlock audio</div>
+            </div>
+          )}
+
           {/* Player Tab */}
           <div style={{ display: mobileTab === 'player' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'center', height: '100%', overflowY: 'auto', padding: '16px 16px 8px', gap: 14 }}>
             <PlayerContent compact={true} />
