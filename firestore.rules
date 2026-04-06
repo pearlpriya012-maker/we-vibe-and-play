@@ -1,0 +1,29 @@
+// firestore.rules
+// Deploy with: firebase deploy --only firestore:rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read/write their own document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Rooms — any authenticated user can read & create
+    // Only participants can update
+    match /rooms/{roomId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null &&
+        request.auth.uid in resource.data.participants.map(p => p['uid']);
+      allow delete: if request.auth != null &&
+        request.auth.uid == resource.data.hostId;
+
+      // Messages — any authenticated user in the room can read/write
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+  }
+}
