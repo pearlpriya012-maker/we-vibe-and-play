@@ -10,10 +10,10 @@ const JSON_FORMAT = `Respond ONLY with valid JSON, no markdown, no extra text:
 
 function buildPrompt(mode, genre, currentTrack, queueTitles, participantCount, playlistContext) {
   if (mode === 'trending') {
-    return `You are a music recommendation AI. List exactly 7 globally trending songs right now across diverse genres. Include mainstream hits, viral songs, and chart-toppers from genres like pop, hip-hop, R&B, EDM, K-pop, and more.\n\n${JSON_FORMAT}`
+    return `You are a music recommendation AI. List exactly 20 globally trending songs right now across diverse genres. Include mainstream hits, viral songs, and chart-toppers from genres like pop, hip-hop, R&B, EDM, K-pop, and more.\n\n${JSON_FORMAT}`
   }
   if (mode === 'genre') {
-    return `You are a music recommendation AI. The user is looking for: "${genre}"\n\nInterpret this as a mood, vibe, genre, or natural language description. Suggest exactly 7 songs that perfectly match what the user wants.\n\n${JSON_FORMAT}`
+    return `You are a music recommendation AI. The user is looking for: "${genre}"\n\nInterpret this as a mood, vibe, genre, or natural language description. Suggest exactly 20 songs that perfectly match what the user wants.\n\n${JSON_FORMAT}`
   }
   // AUTO mode
   const ctx = []
@@ -21,7 +21,7 @@ function buildPrompt(mode, genre, currentTrack, queueTitles, participantCount, p
   if (queueTitles?.length > 0) ctx.push(`Queue: ${queueTitles.slice(0, 5).join(', ')}`)
   if (participantCount > 1) ctx.push(`${participantCount} people vibing together`)
   if (playlistContext?.length > 0) ctx.push(`User's playlists: ${playlistContext.slice(0, 6).join(', ')}`)
-  return `You are a personalized music recommendation AI for a collaborative listening room.\n\n${ctx.join('\n') || 'No current context.'}\n\nGenerate exactly 7 diverse but cohesive recommendations matching the current vibe. Consider genre, energy, mood, and the social listening context.\n\n${JSON_FORMAT}`
+  return `You are a personalized music recommendation AI for a collaborative listening room.\n\n${ctx.join('\n') || 'No current context.'}\n\nGenerate exactly 20 diverse but cohesive recommendations matching the current vibe. Consider genre, energy, mood, and the social listening context.\n\n${JSON_FORMAT}`
 }
 
 export async function POST(request) {
