@@ -181,12 +181,12 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken }) {
 }
 
 // ─── Search & Queue Panel ───
-function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemove, ytAccessToken }) {
+function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemove, ytAccessToken, initialTab }) {
   const [query, setQuery] = useState('')
   const [globalResults, setGlobalResults] = useState([])
   const [playlistResults, setPlaylistResults] = useState([])
   const [searching, setSearching] = useState(false)
-  const [tab, setTab] = useState('search') // 'search' | 'queue' | 'playlists'
+  const [tab, setTab] = useState(initialTab || 'search') // 'search' | 'queue' | 'playlists'
   const debRef = useRef(null)
   const playlistCacheRef = useRef(null) // cached [{videoId, title, channelTitle, thumbnail, durationFormatted, playlistName}]
 
@@ -667,10 +667,13 @@ export default function RoomPage() {
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [videoFocus, setVideoFocus] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const [mobileTab, setMobileTab] = useState('player')
   const [volume, setVolume] = useState(100)
   const [muted, setMuted] = useState(false)
   const [mobileTapped, setMobileTapped] = useState(false)
+  const [mobileTab, setMobileTab] = useState('search')
+  const [lastSeenMsgId, setLastSeenMsgId] = useState(null)
+  const [floatMsg, setFloatMsg] = useState(null)
+  const floatTimerRef = useRef(null)
   const [showVolume, setShowVolume] = useState(false)
 
   const playerRef = useRef(null)
@@ -736,6 +739,24 @@ export default function RoomPage() {
     }, 500)
     return () => clearInterval(tickRef.current)
   }, [])
+
+  // ─── Floating new message bubble on mobile ───
+  useEffect(() => {
+    if (!isMobile || !messages.length) return
+    const latest = messages[messages.length - 1]
+    if (!latest || latest.id === lastSeenMsgId) return
+    if (mobileTab === 'chat') { setLastSeenMsgId(latest.id); return }
+    setFloatMsg(latest)
+    clearTimeout(floatTimerRef.current)
+    floatTimerRef.current = setTimeout(() => setFloatMsg(null), 4000)
+  }, [messages, isMobile])
+
+  useEffect(() => {
+    if (mobileTab === 'chat' && messages.length) {
+      setLastSeenMsgId(messages[messages.length - 1]?.id)
+      setFloatMsg(null)
+    }
+  }, [mobileTab])
 
   // ─── Non-host sync ───
   useEffect(() => {
@@ -1064,16 +1085,50 @@ export default function RoomPage() {
             <PlayerContent compact={true} />
           </div>
 
-          {/* ── Bottom 50/50: SearchAndQueue | Chat ── */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} />
+          {/* ── Tab Bar ── */}
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(13,13,13,0.8)', overflowX: 'auto', scrollbarWidth: 'none' }}>
+            <style>{`#mob-tabs::-webkit-scrollbar{display:none}`}</style>
+            <div id="mob-tabs" style={{ display: 'flex', width: '100%' }}>
+              {[['search','🔍','Search'],['queue','🎵','Queue'],['playlists','📋','Playlist'],['aibond','🐻‍❄️','AI Bond'],['chat','💬','Chat']].map(([id, icon, label]) => {
+                const unread = id === 'chat' && floatMsg
+                return (
+                  <button key={id} onClick={() => setMobileTab(id)}
+                    style={{ flex: 1, minWidth: 56, padding: '9px 4px 7px', background: 'transparent', border: 'none', borderBottom: `2px solid ${mobileTab === id ? 'var(--green)' : 'transparent'}`, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, position: 'relative', transition: 'border-color 0.2s' }}>
+                    <span style={{ fontSize: '1rem', filter: mobileTab === id ? 'drop-shadow(0 0 5px rgba(0,255,136,0.7))' : 'none' }}>{icon}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.5rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: mobileTab === id ? 'var(--green)' : 'var(--text-dim)' }}>{label}</span>
+                    {unread && <span style={{ position: 'absolute', top: 5, right: '18%', width: 7, height: 7, borderRadius: '50%', background: 'var(--pink)', boxShadow: '0 0 6px var(--pink)' }} />}
+                  </button>
+                )
+              })}
             </div>
-            <div style={{ height: 1, background: 'var(--border)', flexShrink: 0 }} />
-            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+          </div>
+
+          {/* ── Tab Content ── */}
+          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+            <div style={{ display: mobileTab === 'search' || mobileTab === 'queue' || mobileTab === 'playlists' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} />
+            </div>
+            <div style={{ display: mobileTab === 'aibond' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={user?.youtubeAccessToken} />
+            </div>
+            <div style={{ display: mobileTab === 'chat' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <ChatPanel roomId={roomId} messages={messages} currentUser={user} />
             </div>
           </div>
+
+          {/* ── Floating new message bubble ── */}
+          {floatMsg && mobileTab !== 'chat' && (
+            <div onClick={() => setMobileTab('chat')}
+              style={{ position: 'absolute', bottom: 12, left: 12, right: 12, zIndex: 30, background: 'rgba(13,13,13,0.97)', border: '1px solid rgba(233,30,99,0.35)', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 4px 24px rgba(0,0,0,0.7)', animation: 'slideUpFade 0.3s ease' }}>
+              <style>{`@keyframes slideUpFade{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+              <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(233,30,99,0.2)', border: '1px solid rgba(233,30,99,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Oswald', fontWeight: 700, fontSize: '0.7rem', color: 'var(--pink)', flexShrink: 0 }}>{floatMsg.displayName?.charAt(0).toUpperCase()}</div>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <span style={{ fontFamily: 'Oswald', fontSize: '0.68rem', color: 'var(--pink)', marginRight: 6 }}>{floatMsg.displayName}</span>
+                <span style={{ fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', maxWidth: '70%', verticalAlign: 'bottom' }}>{floatMsg.text}</span>
+              </div>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', flexShrink: 0 }}>💬</span>
+            </div>
+          )}
 
         </div>
       </div>
