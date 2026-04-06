@@ -2,8 +2,8 @@
 import { NextResponse } from 'next/server'
 
 export async function GET() {
-  const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID
-  const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/youtube/oauth/callback`
+  const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID?.trim()
+  const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL?.trim()}/api/youtube/oauth/callback`
   const SCOPES = [
     'https://www.googleapis.com/auth/youtube.readonly',
     'https://www.googleapis.com/auth/youtube.force-ssl',
