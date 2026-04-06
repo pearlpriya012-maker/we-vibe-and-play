@@ -1017,77 +1017,64 @@ export default function RoomPage() {
           </div>
         </header>
 
-        {/* Mobile Content Area */}
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
+        {/* Mobile Content Area — single scrollable page */}
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', position: 'relative', zIndex: 1, WebkitOverflowScrolling: 'touch' }}>
 
           {/* Mobile tap-to-unlock audio overlay */}
           {isMobile && !mobileTapped && room?.currentTrack && (
             <div onClick={() => { setMobileTapped(true); try { ytPlayerRef.current?.playVideo?.() } catch {} }}
-              style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', cursor: 'pointer' }}>
+              style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', cursor: 'pointer' }}>
               <div style={{ fontSize: '3rem' }}>🎵</div>
               <div style={{ fontFamily: 'Oswald', fontSize: '1rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#fff' }}>Tap to Start Playing</div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Mobile requires a tap to unlock audio</div>
             </div>
           )}
 
-          {/* Player Tab */}
-          <div style={{ display: mobileTab === 'player' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'center', height: '100%', overflowY: 'auto', padding: '16px 16px 8px', gap: 14 }}>
+          {/* ── Player ── */}
+          <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid var(--border)' }}>
             <PlayerContent compact={true} />
-            {isHost && <div style={{ background: 'rgba(243,156,18,0.08)', border: '1px solid rgba(243,156,18,0.25)', borderRadius: 8, padding: '4px 12px', fontFamily: 'Oswald', fontSize: '0.65rem', color: '#f39c12', letterSpacing: '0.1em' }}>⭐ HOST</div>}
+            {isHost && <div style={{ marginTop: 8, textAlign: 'center', background: 'rgba(243,156,18,0.08)', border: '1px solid rgba(243,156,18,0.25)', borderRadius: 8, padding: '4px 12px', fontFamily: 'Oswald', fontSize: '0.65rem', color: '#f39c12', letterSpacing: '0.1em', display: 'inline-block' }}>⭐ HOST</div>}
           </div>
 
-          {/* Queue Tab */}
-          <div style={{ display: mobileTab === 'queue' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} />
-          </div>
-
-          {/* Chat Tab */}
-          <div style={{ display: mobileTab === 'chat' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <ChatPanel roomId={roomId} messages={messages} currentUser={user} />
-          </div>
-
-          {/* People Tab */}
-          <div style={{ display: mobileTab === 'people' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <ParticipantsPanel room={room} currentUser={user} isHost={isHost} roomId={roomId} />
-          </div>
-
-          {/* AI Tab */}
-          <div style={{ display: mobileTab === 'ai' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={user?.youtubeAccessToken} />
-          </div>
-        </div>
-
-        {/* Mobile Bottom Nav */}
-        <nav style={{ position: 'relative', zIndex: 10, display: 'flex', borderTop: '1px solid var(--border)', background: 'rgba(13,13,13,0.97)', backdropFilter: 'blur(20px)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          {MOBILE_TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setMobileTab(tab.id)}
-              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, padding: '10px 4px 8px', background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative', transition: 'all 0.2s' }}
-            >
-              {mobileTab === tab.id && (
-                <div style={{ position: 'absolute', top: 0, left: '20%', right: '20%', height: 2, background: 'var(--green)', borderRadius: '0 0 2px 2px', boxShadow: '0 0 8px var(--green)' }} />
-              )}
-              <span style={{ fontSize: '1.15rem', lineHeight: 1, filter: mobileTab === tab.id ? 'drop-shadow(0 0 6px rgba(0,255,136,0.8))' : 'none' }}>{tab.icon}</span>
-              <span style={{ fontFamily: 'Oswald', fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: mobileTab === tab.id ? 'var(--green)' : 'var(--text-dim)', transition: 'color 0.2s' }}>{tab.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        {/* Now-playing mini bar (visible on non-player tabs) */}
-        {mobileTab !== 'player' && room.currentTrack && (
-          <div onClick={() => setMobileTab('player')} style={{ position: 'absolute', bottom: 58, left: 10, right: 10, background: 'rgba(13,13,13,0.95)', border: '1px solid rgba(0,255,136,0.2)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, zIndex: 20, cursor: 'pointer', backdropFilter: 'blur(12px)', boxShadow: '0 -4px 24px rgba(0,0,0,0.6)' }}>
-            <img src={room.currentTrack.thumbnail} alt="" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--green)', fontFamily: 'Oswald', letterSpacing: '0.08em' }}>{room.isPlaying ? '▶ PLAYING' : '⏸ PAUSED'}</div>
+          {/* ── Search & Queue ── */}
+          <div style={{ borderBottom: '1px solid var(--border)' }}>
+            <div style={{ height: 380, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} />
             </div>
-            {canControl && (
-              <button onClick={e => { e.stopPropagation(); handlePlayPause() }} style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--green)', border: 'none', cursor: 'pointer', fontSize: '0.9rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 12px rgba(0,255,136,0.4)', flexShrink: 0 }}>{room.isPlaying ? '⏸' : '▶'}</button>
-            )}
-            {volumeWidget}
           </div>
-        )}
+
+          {/* ── Chat ── */}
+          <div style={{ borderBottom: '1px solid var(--border)' }}>
+            <div style={{ padding: '10px 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.9rem' }}>💬</span>
+              <span style={{ fontFamily: 'Oswald', fontSize: '0.7rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Chat</span>
+            </div>
+            <div style={{ height: 340, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <ChatPanel roomId={roomId} messages={messages} currentUser={user} />
+            </div>
+          </div>
+
+          {/* ── People ── */}
+          <div style={{ borderBottom: '1px solid var(--border)' }}>
+            <div style={{ padding: '10px 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.9rem' }}>👥</span>
+              <span style={{ fontFamily: 'Oswald', fontSize: '0.7rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>People</span>
+            </div>
+            <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+              <ParticipantsPanel room={room} currentUser={user} isHost={isHost} roomId={roomId} />
+            </div>
+          </div>
+
+          {/* ── AI Bond ── */}
+          <div style={{ borderBottom: '1px solid var(--border)' }}>
+            <div style={{ height: 520, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={user?.youtubeAccessToken} />
+            </div>
+          </div>
+
+          {/* Bottom spacer */}
+          <div style={{ height: 24 }} />
+        </div>
       </div>
     )
   }
