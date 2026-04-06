@@ -1,4 +1,4 @@
-// src/app/api/groq/recommendations/route.js
+// src/app/api/gemini/recommendations/route.js
 import { NextResponse } from 'next/server'
 
 const JSON_FORMAT = `Respond ONLY with valid JSON, no markdown, no extra text:
@@ -27,17 +27,24 @@ function buildPrompt(mode, genre, currentTrack, queueTitles, participantCount, p
 export async function POST(request) {
   const { mode = 'auto', genre = '', userApiKey, currentTrack, queueTitles = [], participantCount = 1, playlistContext = [] } = await request.json()
 
-  const GROQ_API_KEY = (userApiKey || '').trim() || process.env.GROQ_API_KEY?.trim()
-  if (!GROQ_API_KEY) return NextResponse.json({ error: 'No Groq API key available. Add one in AI Bond settings.' }, { status: 500 })
+  if (!userApiKey?.trim()) {
+    return NextResponse.json({ error: 'Gemini API key required. Get yours free at aistudio.google.com/apikey' }, { status: 400 })
+  }
 
   const prompt = buildPrompt(mode, genre, currentTrack, queueTitles, participantCount, playlistContext)
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.8, max_tokens: 1024 }),
-    })
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userApiKey.trim()}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
+        }),
+      }
+    )
 
     if (!response.ok) {
       const err = await response.text()
@@ -45,7 +52,7 @@ export async function POST(request) {
     }
 
     const data = await response.json()
-    const text = data.choices?.[0]?.message?.content || ''
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
     const clean = text.replace(/```json|```/g, '').trim()
     return NextResponse.json(JSON.parse(clean))
   } catch (err) {

@@ -444,51 +444,205 @@ function ParticipantsPanel({ room, currentUser, isHost, roomId }) {
 }
 
 // ─── AI Panel ───
-function AIPanel({ room, canAdd, onAddToQueue }) {
+function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
+  const [provider, setProvider] = useState('')
+  const [groqKey, setGroqKey] = useState('')
+  const [geminiKey, setGeminiKey] = useState('')
+  const [showSetup, setShowSetup] = useState(false)
+  const [mode, setMode] = useState('auto')
+  const [genreQuery, setGenreQuery] = useState('')
   const [recs, setRecs] = useState([])
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
+
+  useEffect(() => {
+    const p = localStorage.getItem('aibond_provider') || ''
+    const gk = localStorage.getItem('aibond_groq_key') || ''
+    const mk = localStorage.getItem('aibond_gemini_key') || ''
+    setProvider(p); setGroqKey(gk); setGeminiKey(mk)
+  }, [])
+
+  const isConfigured = provider === 'server' || (provider === 'groq' && groqKey) || (provider === 'gemini' && geminiKey)
+
+  function saveConfig() {
+    if (provider === 'groq' && !groqKey.trim()) { toast.error('Enter your Groq API key'); return }
+    if (provider === 'gemini' && !geminiKey.trim()) { toast.error('Enter your Gemini API key'); return }
+    if (!provider) { toast.error('Choose a provider'); return }
+    localStorage.setItem('aibond_provider', provider)
+    if (provider === 'groq') localStorage.setItem('aibond_groq_key', groqKey.trim())
+    if (provider === 'gemini') localStorage.setItem('aibond_gemini_key', geminiKey.trim())
+    setShowSetup(false); setFetched(false); setRecs([])
+    toast.success('AI Bond ready!')
+  }
+
   async function fetchRecs() {
+    if (mode === 'genre' && !genreQuery.trim()) { toast.error('Describe the vibe or genre'); return }
     setLoading(true)
     try {
-      const res = await fetch('/api/groq/recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentTrack: room?.currentTrack, queueTitles: (room?.queue || []).slice(0, 5).map(t => t.title), participantCount: room?.participants?.length || 1 }) })
+      let playlistContext = []
+      if (mode === 'auto' && ytAccessToken) {
+        try {
+          const plRes = await fetch('/api/youtube/playlists', { headers: { Authorization: `Bearer ${ytAccessToken}` } })
+          const plData = await plRes.json()
+          playlistContext = (plData.playlists || []).slice(0, 8).map(p => p.title)
+        } catch {}
+      }
+      const endpoint = provider === 'gemini' ? '/api/gemini/recommendations' : '/api/groq/recommendations'
+      const body = {
+        mode, genre: genreQuery,
+        userApiKey: provider === 'groq' ? groqKey : provider === 'gemini' ? geminiKey : undefined,
+        currentTrack: room?.currentTrack,
+        queueTitles: (room?.queue || []).slice(0, 5).map(t => t.title),
+        participantCount: room?.participants?.length || 1,
+        playlistContext,
+      }
+      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json()
-      if (data.error) { toast.error('AI error: ' + data.error); return }
-      setRecs(data.recommendations || [])
-      setFetched(true)
-    } catch (e) { toast.error('AI failed: ' + e.message) } finally { setLoading(false) }
+      if (data.error) { toast.error('AI error: ' + String(data.error).slice(0, 120)); return }
+      setRecs(data.recommendations || []); setFetched(true)
+    } catch (e) { toast.error('Failed: ' + e.message) } finally { setLoading(false) }
   }
+
   async function handleAdd(rec) {
     try {
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(rec.title + ' ' + rec.artist)}&limit=1`)
       const data = await res.json()
-      if (data.results?.[0]) { await onAddToQueue(data.results[0]); toast.success(`Added!`) }
+      if (data.results?.[0]) { await onAddToQueue(data.results[0]); toast.success('Added!') }
       else toast.error('Not found on YouTube')
     } catch { toast.error('Failed to add') }
   }
-  return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '16px 14px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 20 }}>
-        <div style={{ fontSize: '2rem', marginBottom: 8 }}>🤖</div>
-        <div style={{ fontFamily: 'Oswald', fontSize: '0.85rem', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>AI Vibe Picks</div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: 16 }}>Powered by Groq AI</div>
-        <button onClick={fetchRecs} disabled={loading} className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
-          {loading ? <><span className="spinner" /> Thinking…</> : fetched ? '🔄 Refresh' : '✨ Get AI Picks'}
-        </button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {recs.map((rec, i) => (
-          <div key={i} style={{ padding: '12px 14px', background: 'var(--glass)', border: '1px solid var(--border)', borderRadius: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+
+  // ── Setup Screen ──
+  if (!isConfigured || showSetup) {
+    return (
+      <div style={{ padding: '20px 16px', height: '100%', overflowY: 'auto' }}>
+        <style>{`@keyframes bearFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}`}</style>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ fontSize: '2.8rem', marginBottom: 8, display: 'inline-block', animation: 'bearFloat 2.4s ease-in-out infinite' }}>🐻‍❄️</div>
+          <div style={{ fontFamily: 'Oswald', fontSize: '1rem', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 4 }}>AI Bond</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Smart Music Recommendations</div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: 'Oswald', fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 10 }}>Choose AI Provider</div>
+          {[
+            { id: 'server', icon: '⚡', label: 'Quick Start', desc: "App's built-in Groq AI — no setup needed" },
+            { id: 'groq', icon: '🤖', label: 'Groq AI (your key)', desc: 'Free key at console.groq.com/keys' },
+            { id: 'gemini', icon: '✨', label: 'Gemini AI (your key)', desc: 'Free key at aistudio.google.com/apikey' },
+          ].map(opt => (
+            <div key={opt.id} onClick={() => setProvider(opt.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: `1px solid ${provider === opt.id ? 'var(--green)' : 'var(--border)'}`, background: provider === opt.id ? 'rgba(0,255,136,0.06)' : 'var(--glass)', cursor: 'pointer', marginBottom: 8, transition: 'all 0.2s' }}>
+              <span style={{ fontSize: '1.4rem' }}>{opt.icon}</span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500, fontSize: '0.875rem', marginBottom: 2 }}>{rec.title}</div>
-                <div style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>{rec.artist}</div>
+                <div style={{ fontWeight: 500, fontSize: '0.82rem' }}>{opt.label}</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 2 }}>{opt.desc}</div>
               </div>
-              {canAdd && <button onClick={() => handleAdd(rec)} style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', color: 'var(--green)', borderRadius: 6, padding: '4px 10px', fontSize: '0.68rem', cursor: 'pointer', fontFamily: 'Oswald', flexShrink: 0 }}>+ ADD</button>}
+              {provider === opt.id && <span style={{ color: 'var(--green)', fontSize: '1rem' }}>✓</span>}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontStyle: 'italic', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 8 }}>💡 {rec.reasoning}</div>
+          ))}
+        </div>
+        {(provider === 'groq' || provider === 'gemini') && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 8 }}>
+              {provider === 'groq'
+                ? <>Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--green)' }}>console.groq.com/keys</a></>
+                : <>Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--green)' }}>aistudio.google.com/apikey</a></>}
+            </div>
+            <input type="password"
+              value={provider === 'groq' ? groqKey : geminiKey}
+              onChange={e => provider === 'groq' ? setGroqKey(e.target.value) : setGeminiKey(e.target.value)}
+              placeholder={`Paste your ${provider === 'groq' ? 'Groq' : 'Gemini'} API key…`}
+              className="input-vibe" style={{ fontSize: '0.82rem', width: '100%' }} />
           </div>
-        ))}
+        )}
+        <button onClick={saveConfig} disabled={!provider} className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
+          {showSetup ? '💾 Save Changes' : '🚀 Activate AI Bond'}
+        </button>
+        {showSetup && (
+          <button onClick={() => setShowSetup(false)} style={{ width: '100%', marginTop: 8, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-dim)', borderRadius: 8, padding: '10px', fontSize: '0.8rem', cursor: 'pointer' }}>Cancel</button>
+        )}
+      </div>
+    )
+  }
+
+  const providerLabel = { server: { label: 'Groq (app)', color: '#f0a500' }, groq: { label: 'Groq', color: '#f0a500' }, gemini: { label: 'Gemini', color: '#4285f4' } }[provider] || { label: '?', color: 'gray' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <style>{`@keyframes bearPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}`}</style>
+
+      {/* Header */}
+      <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '1.5rem' }}>🐻‍❄️</span>
+            <div>
+              <div style={{ fontFamily: 'Oswald', fontSize: '0.85rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>AI Bond</div>
+              <div style={{ fontSize: '0.62rem', color: providerLabel.color, marginTop: 1 }}>via {providerLabel.label}</div>
+            </div>
+          </div>
+          <button onClick={() => setShowSetup(true)} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-dim)', borderRadius: 6, padding: '4px 10px', fontSize: '0.68rem', cursor: 'pointer' }}>⚙️ Change</button>
+        </div>
+        {/* Mode pills */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['auto', '⚡ Auto'], ['trending', '🌍 Trending'], ['genre', '🎭 By Vibe']].map(([id, label]) => (
+            <button key={id} onClick={() => { setMode(id); setFetched(false); setRecs([]) }}
+              style={{ flex: 1, padding: '7px 4px', borderRadius: 8, border: `1px solid ${mode === id ? 'var(--green)' : 'var(--border)'}`, background: mode === id ? 'rgba(0,255,136,0.1)' : 'transparent', color: mode === id ? 'var(--green)' : 'var(--text-dim)', fontFamily: 'Oswald', fontSize: '0.58rem', letterSpacing: '0.06em', cursor: 'pointer', transition: 'all 0.2s' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Genre search input */}
+      {mode === 'genre' && (
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <input type="text" value={genreQuery} onChange={e => setGenreQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && fetchRecs()}
+            placeholder="chill sunday vibes, workout energy, devotional…"
+            className="input-vibe" style={{ fontSize: '0.8rem', width: '100%' }} />
+        </div>
+      )}
+
+      {/* Body */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 14, color: 'var(--text-dim)' }}>
+            <span style={{ fontSize: '2.4rem', display: 'inline-block', animation: 'bearPulse 1.2s ease-in-out infinite' }}>🐻‍❄️</span>
+            <div style={{ fontFamily: 'Oswald', fontSize: '0.75rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Thinking…</div>
+          </div>
+        ) : !fetched ? (
+          <div style={{ padding: '20px 16px' }}>
+            <div style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: 18, lineHeight: 1.6 }}>
+              {mode === 'auto' && '⚡ Personalized based on what\'s playing and your playlists'}
+              {mode === 'trending' && '🌍 What\'s hot globally right now, across all genres'}
+              {mode === 'genre' && '🎭 Describe any mood, vibe, or genre in plain language'}
+            </div>
+            <button onClick={fetchRecs} disabled={mode === 'genre' && !genreQuery.trim()} className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '13px' }}>
+              ✨ Get AI Picks
+            </button>
+          </div>
+        ) : (
+          <div style={{ padding: '10px 14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontFamily: 'Oswald', fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{recs.length} picks</div>
+              <button onClick={fetchRecs} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-dim)', borderRadius: 6, padding: '4px 10px', fontSize: '0.68rem', cursor: 'pointer' }}>🔄 Refresh</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {recs.map((rec, i) => (
+                <div key={i} style={{ padding: '12px 14px', background: 'var(--glass)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: '0.85rem', marginBottom: 2 }}>{rec.title}</div>
+                      <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{rec.artist}</div>
+                    </div>
+                    {canAdd && <button onClick={() => handleAdd(rec)} style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', color: 'var(--green)', borderRadius: 6, padding: '4px 10px', fontSize: '0.68rem', cursor: 'pointer', fontFamily: 'Oswald', flexShrink: 0, whiteSpace: 'nowrap' }}>+ ADD</button>}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontStyle: 'italic', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 8 }}>💡 {rec.reasoning}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -885,7 +1039,7 @@ export default function RoomPage() {
 
           {/* AI Tab */}
           <div style={{ display: mobileTab === 'ai' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <AIPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} />
+            <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={user?.youtubeAccessToken} />
           </div>
         </div>
 
@@ -1035,14 +1189,14 @@ export default function RoomPage() {
         {/* Right */}
         <div style={{ borderLeft: '1px solid var(--border)', background: 'rgba(13,13,13,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <div className="tab-bar">
-            {[['chat', '💬 Chat'], ['participants', '👥 People'], ['ai', '🤖 AI']].map(([id, label]) => (
+            {[['chat', '💬 Chat'], ['participants', '👥 People'], ['ai', '🐻‍❄️ AI Bond']].map(([id, label]) => (
               <button key={id} className={`tab-btn ${rightTab === id ? 'active' : ''}`} onClick={() => setRightTab(id)} style={{ fontSize: '0.7rem' }}>{label}</button>
             ))}
           </div>
           <div style={{ flex: 1, overflow: 'hidden' }}>
             {rightTab === 'chat' && <ChatPanel roomId={roomId} messages={messages} currentUser={user} />}
             {rightTab === 'participants' && <ParticipantsPanel room={room} currentUser={user} isHost={isHost} roomId={roomId} />}
-            {rightTab === 'ai' && <AIPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} />}
+            {rightTab === 'ai' && <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={user?.youtubeAccessToken} />}
           </div>
         </div>
       </div>
