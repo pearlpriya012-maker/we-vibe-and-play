@@ -85,32 +85,45 @@ function ProgressBar({ currentTime, duration, isHost, canControl, onSeek }) {
 }
 
 // ─── YouTube Playlist Panel ───
-function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, onShufflePlaylist }) {
+function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, onShufflePlaylist, onTokenExpired }) {
   const [playlists, setPlaylists] = useState([])
   const [tracks, setTracks] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedPlaylist, setSelectedPlaylist] = useState(null)
   const [selectedPlaylistMeta, setSelectedPlaylistMeta] = useState(null)
   const [view, setView] = useState('playlists') // 'playlists' | 'tracks'
+  const [tokenError, setTokenError] = useState(false)
 
   useEffect(() => {
     if (!ytAccessToken) { setPlaylists([]); return }
-    async function loadPlaylists() {
-      setLoading(true)
-      try {
-        const res = await fetch('/api/youtube/playlists', {
-          headers: { Authorization: `Bearer ${ytAccessToken}` }
-        })
-        const data = await res.json()
-        setPlaylists(data.playlists || [])
-      } catch {
-        setPlaylists([])
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadPlaylists()
+    setTokenError(false)
+    fetchPlaylists(ytAccessToken)
   }, [ytAccessToken])
+
+  async function fetchPlaylists(token) {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/youtube/playlists', { headers: { Authorization: `Bearer ${token}` } })
+      if (res.status === 401 || res.status === 403) {
+        // Token expired — try refresh once
+        const newToken = await onTokenExpired?.()
+        if (newToken) {
+          const res2 = await fetch('/api/youtube/playlists', { headers: { Authorization: `Bearer ${newToken}` } })
+          const data2 = await res2.json()
+          setPlaylists(data2.playlists || [])
+        } else {
+          setTokenError(true)
+        }
+        return
+      }
+      const data = await res.json()
+      setPlaylists(data.playlists || [])
+    } catch {
+      setPlaylists([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function loadPlaylistTracks(playlistId, title, thumbnail) {
     setSelectedPlaylist(title)
@@ -118,10 +131,13 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, o
     setView('tracks')
     setLoading(true)
     try {
-      const res = await fetch(`/api/youtube/playlistItems?playlistId=${playlistId}`, {
-        headers: { Authorization: `Bearer ${ytAccessToken || ''}` }
-      })
-      const data = await res.json()
+      let token = ytAccessToken
+      const res = await fetch(`/api/youtube/playlistItems?playlistId=${playlistId}`, { headers: { Authorization: `Bearer ${token}` } })
+      if (res.status === 401 || res.status === 403) {
+        token = await onTokenExpired?.() || token
+      }
+      const res2 = await fetch(`/api/youtube/playlistItems?playlistId=${playlistId}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res2.json()
       setTracks(data.results || [])
     } catch {
       toast.error('Could not load playlist tracks')
@@ -132,11 +148,16 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, o
 
   if (loading) return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim)' }}><span className="spinner" /></div>
 
-  if (!ytAccessToken) return (
+  if (!ytAccessToken || tokenError) return (
     <div style={{ padding: 24, textAlign: 'center' }}>
       <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>📋</div>
-      <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: 12 }}>Connect YouTube in Settings to see your playlists</div>
-      <Link href="/settings" className="btn-ghost" style={{ fontSize: '0.8rem', padding: '8px 16px' }}>Go to Settings →</Link>
+      <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: 12 }}>
+        {tokenError ? 'YouTube session expired' : 'Connect YouTube in Settings to see your playlists'}
+      </div>
+      {tokenError
+        ? <button onClick={async () => { setTokenError(false); const t = await onTokenExpired?.(); if (t) fetchPlaylists(t) }} className="btn-primary" style={{ fontSize: '0.8rem', padding: '8px 16px' }}>🔄 Reconnect YouTube</button>
+        : <Link href="/settings" className="btn-ghost" style={{ fontSize: '0.8rem', padding: '8px 16px' }}>Go to Settings →</Link>
+      }
     </div>
   )
 
@@ -188,6 +209,7 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, o
         <div style={{ padding: 24, textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>📋</div>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: 12 }}>No playlists found on your YouTube account</div>
+          <button onClick={() => fetchPlaylists(ytAccessToken)} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-dim)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: '0.75rem' }}>🔄 Retry</button>
         </div>
       ) : playlists.map(pl => (
         <div key={pl.id} onClick={() => loadPlaylistTracks(pl.id, pl.title, pl.thumbnail)} style={{ display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 8, alignItems: 'center', cursor: 'pointer', transition: 'background 0.15s' }}
@@ -206,7 +228,7 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, o
 }
 
 // ─── Search & Queue Panel ───
-function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemove, ytAccessToken, initialTab, hideTabs, roomId, playedHistory = [], onStartPlaylist, onShufflePlaylist }) {
+function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemove, ytAccessToken, initialTab, hideTabs, roomId, playedHistory = [], onStartPlaylist, onShufflePlaylist, onTokenExpired }) {
   const [query, setQuery] = useState('')
   const [globalResults, setGlobalResults] = useState([])
   const [playlistResults, setPlaylistResults] = useState([])
@@ -308,7 +330,7 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
       )}
 
       {tab === 'playlists' ? (
-        <PlaylistPanel onAddToQueue={onAddToQueue} canAdd={canAdd} ytAccessToken={ytAccessToken} onStartPlaylist={onStartPlaylist} onShufflePlaylist={onShufflePlaylist} />
+        <PlaylistPanel onAddToQueue={onAddToQueue} canAdd={canAdd} ytAccessToken={ytAccessToken} onStartPlaylist={onStartPlaylist} onShufflePlaylist={onShufflePlaylist} onTokenExpired={onTokenExpired} />
       ) : tab === 'aibond' ? (
         <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={onAddToQueue} ytAccessToken={ytAccessToken} />
       ) : tab === 'queue' ? (
@@ -852,6 +874,30 @@ export default function RoomPage() {
     return () => unsub?.()
   }, [user?.uid])
 
+  // ─── Refresh expired YouTube access token using stored refresh token ───
+  async function refreshYtToken() {
+    try {
+      const { getDoc, doc: firestoreDoc, updateDoc } = await import('firebase/firestore')
+      const { db: firestoreDb } = await import('@/lib/firebase')
+      const snap = await getDoc(firestoreDoc(firestoreDb, 'users', user.uid))
+      const refreshToken = snap.data()?.youtubeRefreshToken
+      if (!refreshToken) { toast.error('Please re-link YouTube in Settings'); return null }
+      const res = await fetch('/api/youtube/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      })
+      const data = await res.json()
+      if (!data.accessToken) { toast.error('Session expired — please re-link YouTube'); return null }
+      await updateDoc(firestoreDoc(firestoreDb, 'users', user.uid), { youtubeAccessToken: data.accessToken })
+      setYtToken(data.accessToken)
+      return data.accessToken
+    } catch {
+      toast.error('Could not refresh YouTube session')
+      return null
+    }
+  }
+
   useEffect(() => {
     if (!roomId) return
     return subscribeToMessages(roomId, setMessages)
@@ -1292,7 +1338,7 @@ export default function RoomPage() {
           {/* ── Tab Content ── */}
           <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
             <div style={{ display: mobileTab === 'search' || mobileTab === 'queue' || mobileTab === 'playlists' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={ytToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} hideTabs={true} roomId={roomId} playedHistory={playedHistory} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} />
+              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={ytToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} hideTabs={true} roomId={roomId} playedHistory={playedHistory} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} onTokenExpired={refreshYtToken} />
             </div>
             <div style={{ display: mobileTab === 'aibond' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={ytToken} />
@@ -1376,7 +1422,7 @@ export default function RoomPage() {
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)' }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}>◀</button>
               </div>
-              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={ytToken} roomId={roomId} playedHistory={playedHistory} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} />
+              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={ytToken} roomId={roomId} playedHistory={playedHistory} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} onTokenExpired={refreshYtToken} />
             </>
           )}
         </div>
