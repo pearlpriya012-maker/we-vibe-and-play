@@ -973,6 +973,12 @@ export default function RoomPage() {
     prevTrackRef.current = curr || null
   }, [room?.currentTrack?.videoId])
 
+  // ─── Mobile: reset tap lock when track changes so overlay shows for each new song ───
+  useEffect(() => {
+    if (!isMobile) return
+    setMobileTapped(false)
+  }, [room?.currentTrack?.videoId])
+
   // ─── Non-host sync ───
   useEffect(() => {
     if (!room || isHost) return
@@ -986,15 +992,21 @@ export default function RoomPage() {
       if (!p) return
       const vid = p.getVideoData?.()?.video_id
       if (room.currentTrack?.videoId && vid !== room.currentTrack.videoId) {
-        p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        if (isMobile) {
+          // Mobile: cue only — tap overlay will start playback after user interacts
+          p.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        } else {
+          p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        }
         return
       }
       // Guard: only toggle if state actually differs — prevents playVideo() spam every second
+      // On mobile, only play if user has already tapped (browser autoplay policy)
       const state = p.getPlayerState?.()
-      if (room.isPlaying && state !== 1) p.playVideo?.()
+      if (room.isPlaying && state !== 1 && (!isMobile || mobileTapped)) p.playVideo?.()
       else if (!room.isPlaying && state !== 2) p.pauseVideo?.()
     } catch {}
-  }, [room?.isPlaying, room?.currentTrack?.videoId, isHost])
+  }, [room?.isPlaying, room?.currentTrack?.videoId, isHost, mobileTapped])
 
   // ─── Host: push timestamp every 5s ───
   useEffect(() => {
@@ -1012,9 +1024,11 @@ export default function RoomPage() {
     try {
       ytPlayerRef.current = e.target   // store the real YT player object here
       if (!room?.currentTrack?.videoId) return
-      if (room.isPlaying) {
+      if (!isMobile && room.isPlaying) {
+        // Desktop: autoplay is allowed
         e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       } else {
+        // Mobile: never autoplay — browser blocks it; tap overlay will call playVideo()
         e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       }
       // On desktop, mark as tapped (no overlay needed); on mobile, overlay handles it
@@ -1037,6 +1051,7 @@ export default function RoomPage() {
     lastUpdateRef.current = Date.now()  // Mark that we're making a change
     const p = ytPlayerRef.current
     if (!p) return
+    setMobileTapped(true)  // dismiss tap overlay when user presses play/pause directly
     if (room.isPlaying) {
       p.pauseVideo()
       await updatePlayback(roomId, { isPlaying: false, currentTime: p.getCurrentTime() })
