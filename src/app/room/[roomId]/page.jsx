@@ -9,7 +9,7 @@ import {
   subscribeToRoom, subscribeToMessages,
   updatePlayback, addToQueue, addManyToQueue, removeFromQueue, reorderQueue,
   setCurrentTrack, skipToNext, leaveRoom,
-  sendMessage, addReaction, toggleParticipantQueueAccess,
+  sendMessage, addReaction, toggleParticipantQueueAccess, toggleParticipantFullControl,
   kickParticipant, updateMusicMode,
 } from '@/lib/rooms'
 
@@ -578,6 +578,12 @@ function ParticipantsPanel({ room, currentUser, isHost, roomId }) {
               <div style={{ position: 'absolute', top: 3, left: room.participantsCanAddToQueue ? 21 : 3, width: 18, height: 18, borderRadius: '50%', background: room.participantsCanAddToQueue ? '#000' : 'var(--text-dim)', transition: 'left 0.3s' }} />
             </div>
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginTop: 10 }}>
+            <span style={{ fontSize: '0.82rem' }}>Full access — guests control everything</span>
+            <div onClick={() => toggleParticipantFullControl(roomId, !room.participantsFullControl)} style={{ width: 42, height: 24, borderRadius: 12, background: room.participantsFullControl ? '#a855f7' : 'rgba(255,255,255,0.1)', position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'background 0.3s' }}>
+              <div style={{ position: 'absolute', top: 3, left: room.participantsFullControl ? 21 : 3, width: 18, height: 18, borderRadius: '50%', background: room.participantsFullControl ? '#fff' : 'var(--text-dim)', transition: 'left 0.3s' }} />
+            </div>
+          </label>
         </div>
       )}
       <div style={{ fontFamily: 'Oswald', fontSize: '0.7rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-dim)', padding: '4px 0 8px' }}>{sorted.length} Participant{sorted.length !== 1 ? 's' : ''}</div>
@@ -850,10 +856,12 @@ export default function RoomPage() {
   const [ytToken, setYtToken] = useState(user?.youtubeAccessToken || null)
 
   const isHost = room?.hostId === user?.uid
-  // canAdd = can add songs AND control playback (when host grants access)
-  const canAdd = isHost || room?.participantsCanAddToQueue
-  // canControl = can use play/pause/seek
-  const canControl = isHost || room?.participantsCanAddToQueue
+  // canAdd = can add songs to queue
+  const canAdd = isHost || room?.participantsCanAddToQueue || room?.participantsFullControl
+  // canControl = can play/pause/skip/seek
+  const canControl = isHost || room?.participantsCanAddToQueue || room?.participantsFullControl
+  // canFullControl = host-level: also gets previous track button
+  const canFullControl = isHost || room?.participantsFullControl
 
   useEffect(() => {
     if (!user) { router.replace('/auth/login'); return }
@@ -1103,6 +1111,28 @@ export default function RoomPage() {
     await updateDoc(doc(db, 'rooms', roomId), { queue: newQueue })
   }
 
+  async function handlePreviousTrack() {
+    if (!canFullControl) return
+    if (playedHistory.length === 0) {
+      // Restart current track from beginning
+      try { ytPlayerRef.current?.seekTo?.(0, true) } catch {}
+      await updatePlayback(roomId, { currentTime: 0, isPlaying: true })
+      return
+    }
+    const prev = playedHistory[playedHistory.length - 1]
+    setPlayedHistory(h => h.slice(0, -1))
+    // Push current track back to front of queue
+    const { updateDoc, doc } = await import('firebase/firestore')
+    const { db } = await import('@/lib/firebase')
+    const newQueue = room.currentTrack ? [room.currentTrack, ...(room.queue || [])] : (room.queue || [])
+    await updateDoc(doc(db, 'rooms', roomId), {
+      currentTrack: prev,
+      queue: newQueue,
+      currentTime: 0,
+      isPlaying: true,
+    })
+  }
+
   async function handleLeave() {
     await leaveRoom(roomId, user.uid)
     toast.success('Left the room')
@@ -1259,6 +1289,9 @@ export default function RoomPage() {
           </div>
           {canControl ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: compact ? 12 : 16, justifyContent: 'center' }}>
+              {canFullControl && (
+                <button onClick={handlePreviousTrack} style={{ width: compact ? 36 : 40, height: compact ? 36 : 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⏮</button>
+              )}
               <button onClick={handlePlayPause} style={{ width: compact ? 46 : 52, height: compact ? 46 : 52, borderRadius: '50%', background: 'var(--green)', border: 'none', cursor: 'pointer', fontSize: compact ? '1rem' : '1.2rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(0,255,136,0.4)', transition: 'transform 0.15s' }}>{room.isPlaying ? '⏸' : '▶'}</button>
               <button onClick={() => skipToNext(roomId)} style={{ width: compact ? 36 : 40, height: compact ? 36 : 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⏭</button>
               {volumeWidget}
@@ -1328,13 +1361,22 @@ export default function RoomPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
               <style>{'.hide-scrollbar::-webkit-scrollbar{display:none}'}</style>
               {isHost && (
-                <div onClick={() => toggleParticipantQueueAccess(roomId, !room.participantsCanAddToQueue)}
-                  style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 8, border: `1px solid ${room.participantsCanAddToQueue ? 'rgba(0,255,136,0.4)' : 'var(--border)'}`, background: room.participantsCanAddToQueue ? 'rgba(0,255,136,0.08)' : 'transparent', cursor: 'pointer' }}>
-                  <div style={{ width: 26, height: 14, borderRadius: 7, background: room.participantsCanAddToQueue ? 'var(--green)' : 'rgba(255,255,255,0.12)', position: 'relative', flexShrink: 0, transition: 'background 0.3s' }}>
-                    <div style={{ position: 'absolute', top: 2, left: room.participantsCanAddToQueue ? 13 : 2, width: 10, height: 10, borderRadius: '50%', background: room.participantsCanAddToQueue ? '#000' : 'var(--text-dim)', transition: 'left 0.3s' }} />
+                <>
+                  <div onClick={() => toggleParticipantQueueAccess(roomId, !room.participantsCanAddToQueue)}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 8, border: `1px solid ${room.participantsCanAddToQueue ? 'rgba(0,255,136,0.4)' : 'var(--border)'}`, background: room.participantsCanAddToQueue ? 'rgba(0,255,136,0.08)' : 'transparent', cursor: 'pointer' }}>
+                    <div style={{ width: 26, height: 14, borderRadius: 7, background: room.participantsCanAddToQueue ? 'var(--green)' : 'rgba(255,255,255,0.12)', position: 'relative', flexShrink: 0, transition: 'background 0.3s' }}>
+                      <div style={{ position: 'absolute', top: 2, left: room.participantsCanAddToQueue ? 13 : 2, width: 10, height: 10, borderRadius: '50%', background: room.participantsCanAddToQueue ? '#000' : 'var(--text-dim)', transition: 'left 0.3s' }} />
+                    </div>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.56rem', letterSpacing: '0.07em', textTransform: 'uppercase', color: room.participantsCanAddToQueue ? 'var(--green)' : 'var(--text-dim)', whiteSpace: 'nowrap' }}>Guests {room.participantsCanAddToQueue ? 'Can Add' : 'View Only'}</span>
                   </div>
-                  <span style={{ fontFamily: 'Oswald', fontSize: '0.56rem', letterSpacing: '0.07em', textTransform: 'uppercase', color: room.participantsCanAddToQueue ? 'var(--green)' : 'var(--text-dim)', whiteSpace: 'nowrap' }}>Guests {room.participantsCanAddToQueue ? 'Can Add' : 'View Only'}</span>
-                </div>
+                  <div onClick={() => toggleParticipantFullControl(roomId, !room.participantsFullControl)}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 8, border: `1px solid ${room.participantsFullControl ? 'rgba(168,85,247,0.5)' : 'var(--border)'}`, background: room.participantsFullControl ? 'rgba(168,85,247,0.1)' : 'transparent', cursor: 'pointer' }}>
+                    <div style={{ width: 26, height: 14, borderRadius: 7, background: room.participantsFullControl ? '#a855f7' : 'rgba(255,255,255,0.12)', position: 'relative', flexShrink: 0, transition: 'background 0.3s' }}>
+                      <div style={{ position: 'absolute', top: 2, left: room.participantsFullControl ? 13 : 2, width: 10, height: 10, borderRadius: '50%', background: room.participantsFullControl ? '#fff' : 'var(--text-dim)', transition: 'left 0.3s' }} />
+                    </div>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.56rem', letterSpacing: '0.07em', textTransform: 'uppercase', color: room.participantsFullControl ? '#a855f7' : 'var(--text-dim)', whiteSpace: 'nowrap' }}>Full Access {room.participantsFullControl ? 'ON' : 'OFF'}</span>
+                  </div>
+                </>
               )}
               {[...(room.participants || [])].sort((a, b) => a.uid === room.hostId ? -1 : b.uid === room.hostId ? 1 : 0).map(p => (
                 <div key={p.uid} style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
@@ -1488,6 +1530,12 @@ export default function RoomPage() {
                 </div>
                 {canControl ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'center' }}>
+                    {canFullControl && (
+                      <button onClick={handlePreviousTrack} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
+                      >⏮</button>
+                    )}
                     <button onClick={handlePlayPause} style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--green)', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(0,255,136,0.4)', transition: 'transform 0.15s' }}
                       onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
                       onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}

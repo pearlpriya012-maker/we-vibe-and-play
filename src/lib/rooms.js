@@ -63,6 +63,7 @@ export async function createRoom({ hostId, hostName, hostPhoto, mode }) {
     currentTime: 0,
     queue: [],
     participantsCanAddToQueue: false,
+    participantsFullControl: false,
     musicMode: true,
     createdAt: serverTimestamp(),
     lastActivity: serverTimestamp(),
@@ -215,6 +216,17 @@ export async function skipToNext(roomId) {
 export async function toggleParticipantQueueAccess(roomId, enabled) {
   await updateDoc(doc(db, 'rooms', roomId), {
     participantsCanAddToQueue: enabled,
+    // Downgrading from full control when disabling "can add"
+    ...(enabled === false ? { participantsFullControl: false } : {}),
+  })
+}
+
+// ─── Toggle participant full control (play/pause/skip/previous/add/seek — everything) ───
+export async function toggleParticipantFullControl(roomId, enabled) {
+  await updateDoc(doc(db, 'rooms', roomId), {
+    participantsFullControl: enabled,
+    // Full control implies can-add
+    ...(enabled === true ? { participantsCanAddToQueue: true } : {}),
   })
 }
 
