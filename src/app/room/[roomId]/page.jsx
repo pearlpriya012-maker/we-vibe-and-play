@@ -1267,7 +1267,7 @@ export default function RoomPage() {
       ? (isMobile
           ? { position: 'fixed', top: 0, left: 0, width: 1, height: 1, opacity: 0.001, pointerEvents: 'none', zIndex: -1 }
           : { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 })
-      : { position: 'relative', width: '100%', paddingTop: '56.25%', overflow: 'hidden', flexShrink: 0, borderRadius: isMobile ? 0 : videoFocus ? 0 : 12, boxShadow: isMobile ? 'none' : '0 20px 60px rgba(0,0,0,0.8)' }
+      : { position: 'relative', width: '100%', paddingTop: '56.25%', overflow: 'hidden', flexShrink: 0 }
     }>
       <YouTube
         ref={playerRef}
@@ -1290,7 +1290,7 @@ export default function RoomPage() {
         style={{ width: 36, height: 36, borderRadius: 8, background: showVolume ? 'rgba(0,255,136,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showVolume ? 'rgba(0,255,136,0.4)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0 }}
       >{volumeIcon}</button>
       {showVolume && (
-        <div style={{ position: 'absolute', bottom: isMobile ? 'auto' : '110%', top: isMobile ? '110%' : 'auto', left: '50%', transform: 'translateX(-50%)', background: 'rgba(13,13,13,0.97)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: 12, padding: '12px 16px', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.8)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, minWidth: 44 }}>
+        <div style={{ position: 'absolute', bottom: isMobile ? 'auto' : '110%', top: isMobile ? '110%' : 'auto', left: '50%', transform: 'translateX(-50%)', background: 'rgba(13,13,13,0.97)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: 12, padding: '12px 16px', zIndex: 1000, boxShadow: '0 8px 32px rgba(0,0,0,0.8)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, minWidth: 44 }}>
           <span style={{ fontFamily: 'Oswald', fontSize: '0.6rem', letterSpacing: '0.12em', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{muted ? 'MUTED' : `${volume}%`}</span>
           <input
             type="range" min="0" max="100" value={muted ? 0 : volume}
@@ -1558,12 +1558,12 @@ export default function RoomPage() {
         </div>
 
         {/* Center */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: videoFocus ? '16px' : '20px 24px', gap: 16, background: 'rgba(10,10,10,0.4)', overflow: 'hidden', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: videoFocus ? '16px' : '20px 24px', gap: 16, background: 'rgba(10,10,10,0.4)', overflow: 'auto', minWidth: 0 }}>
           {room.currentTrack ? (
             <>
               {musicMode && <MusicVisualizer track={room.currentTrack} isPlaying={room.isPlaying} />}
               {!musicMode && (
-                <div style={{ position: 'relative', width: '100%', maxWidth: videoFocus ? '100%' : 700, flexShrink: 0 }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: videoFocus ? '100%' : 700, flexShrink: 0, borderRadius: videoFocus ? 0 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
                   {ytPlayerEl}
                   <button onClick={() => setVideoFocus(f => !f)} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.65)', border: `1px solid ${videoFocus ? 'rgba(52,152,219,0.7)' : 'rgba(255,255,255,0.25)'}`, borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'Oswald', color: videoFocus ? 'var(--cyan)' : '#fff', fontSize: '0.72rem', letterSpacing: '0.1em', transition: 'all 0.2s', backdropFilter: 'blur(4px)' }}>
                     {videoFocus ? '✕ EXIT FOCUS' : '⛶ FOCUS'}
