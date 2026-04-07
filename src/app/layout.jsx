@@ -6,7 +6,11 @@ import '@/styles/globals.css'
 export const metadata = {
   title: 'WE🕊️ — Collaborative Music Rooms',
   description: 'Watch. Listen. Together — in perfect sync.',
-  icons: { icon: '/favicon.ico' },
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
   openGraph: {
     title: 'WE🕊️',
     description: 'Real-time collaborative music rooms powered by YouTube & AI.',
