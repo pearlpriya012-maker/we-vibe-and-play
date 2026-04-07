@@ -1105,6 +1105,13 @@ export default function RoomPage() {
     else if (e.data === YT.ENDED) await skipToNext(roomId)
   }
 
+  async function handlePlayerError(e) {
+    // error codes: 2=invalid id, 5=HTML5 error, 100=not found, 101/150=embedding not allowed
+    if (isHost) {
+      await skipToNext(roomId)
+    }
+  }
+
   async function handlePlayPause() {
     if (!canControl) return
     lastUpdateRef.current = Date.now()
@@ -1292,6 +1299,7 @@ export default function RoomPage() {
         opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
         onReady={handlePlayerReady}
         onStateChange={handleStateChange}
+        onError={handlePlayerError}
         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
       />
     </div>

@@ -29,8 +29,8 @@ export async function GET(request) {
   if (!API_KEY) return NextResponse.json({ error: 'YouTube API not configured' }, { status: 500 })
 
   try {
-    // Step 1: Search
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(q)}&maxResults=${limit}&key=${API_KEY}&videoCategoryId=10`
+    // Step 1: Search (videoEmbeddable + videoSyndicated = only playable in browser)
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(q)}&maxResults=${limit}&key=${API_KEY}&videoCategoryId=10&videoEmbeddable=true&videoSyndicated=true`
     const searchRes = await fetch(searchUrl)
     const searchData = await searchRes.json()
 
