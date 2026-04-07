@@ -867,6 +867,7 @@ export default function RoomPage() {
   const volumePopupRef = useRef(null)
   const lastUpdateRef = useRef(0)  // Track recent updates to prevent sync loops
   const prevTrackRef = useRef(null)
+  const mobileSkipTimerRef = useRef(null)  // Detects "can't play on mobile browser" stuck state
   const [ytToken, setYtToken] = useState(user?.youtubeAccessToken || null)
 
   const isHost = room?.hostId === user?.uid
@@ -967,7 +968,7 @@ export default function RoomPage() {
         if (typeof dur === 'number' && isFinite(dur) && dur > 0) setDuration(dur)
       } catch {}
     }, 500)
-    return () => clearInterval(tickRef.current)
+    return () => { clearInterval(tickRef.current); clearTimeout(mobileSkipTimerRef.current) }
   }, [])
 
   // ─── Floating new message bubble on mobile ───
@@ -1003,6 +1004,8 @@ export default function RoomPage() {
       })
     }
     prevTrackRef.current = curr || null
+    // Clear any stuck-video timer when the track changes — fresh timer starts in handlePlayerReady
+    clearTimeout(mobileSkipTimerRef.current)
   }, [room?.currentTrack?.videoId])
 
   // ─── Non-host sync — audio always unlocked here (past entry gate) ───
@@ -1098,13 +1101,30 @@ export default function RoomPage() {
       e.target.setVolume(volume)
       if (room.isPlaying) e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       else e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+      // Mobile: if the video is supposed to play but stays UNSTARTED after 7s,
+      // it's showing "This content can't be played on mobile browser" inside the iframe.
+      // That message never fires onError, so we detect it via timeout.
+      if (room.isPlaying && isHost && isMobile) {
+        clearTimeout(mobileSkipTimerRef.current)
+        mobileSkipTimerRef.current = setTimeout(async () => {
+          const state = ytPlayerRef.current?.getPlayerState?.()
+          // -1 = UNSTARTED, 3 = BUFFERING for too long — both mean can't play
+          if (state === -1 || state === 3) {
+            await skipToNext(roomId)
+          }
+        }, 7000)
+      }
     } catch {}
   }
 
   async function handleStateChange(e) {
+    // Clear the mobile stuck-video timer as soon as the player actually starts
+    const YT = window.YT?.PlayerState
+    if (YT && (e.data === YT.PLAYING || e.data === YT.BUFFERING)) {
+      clearTimeout(mobileSkipTimerRef.current)
+    }
     if (!canControl || seekLock.current) return
     lastUpdateRef.current = Date.now()  // Mark that we're making a change
-    const YT = window.YT?.PlayerState
     if (!YT) return
     if (e.data === YT.PLAYING) await updatePlayback(roomId, { isPlaying: true, currentTime: e.target.getCurrentTime() })
     else if (e.data === YT.PAUSED) await updatePlayback(roomId, { isPlaying: false, currentTime: e.target.getCurrentTime() })
