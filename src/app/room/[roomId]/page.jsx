@@ -1269,7 +1269,7 @@ export default function RoomPage() {
           : { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 })
       : isMobile
         ? { width: '100%', aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.8)', flexShrink: 0 }
-        : { width: '100%', maxWidth: videoFocus ? 1100 : 700, aspectRatio: '16/9', borderRadius: videoFocus ? 8 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)', flexShrink: 0 }
+        : { width: '100%', maxWidth: videoFocus ? '100%' : 700, aspectRatio: '16/9', borderRadius: videoFocus ? 0 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)', flexShrink: 0 }
     }>
       <YouTube
         ref={playerRef}
@@ -1313,13 +1313,6 @@ export default function RoomPage() {
       <>
         {musicMode && !compact && <MusicVisualizer track={room.currentTrack} isPlaying={room.isPlaying} />}
         {ytPlayerEl}
-        {!musicMode && !isMobile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <button onClick={() => setVideoFocus(f => !f)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: videoFocus ? 'rgba(52,152,219,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${videoFocus ? 'rgba(52,152,219,0.5)' : 'var(--border)'}`, borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontFamily: 'Oswald', color: videoFocus ? 'var(--cyan)' : 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '0.1em', transition: 'all 0.2s' }}>
-              {videoFocus ? '✕ EXIT FOCUS' : '⛶ FOCUS'}
-            </button>
-          </div>
-        )}
         <div style={{ width: '100%', maxWidth: compact ? '100%' : videoFocus ? 700 : 500 }}>
           <div style={{ textAlign: 'center', marginBottom: compact ? 10 : 14 }}>
             <div style={{ fontWeight: 600, fontSize: compact ? '0.9rem' : '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
@@ -1528,7 +1521,7 @@ export default function RoomPage() {
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `${videoFocus ? '0px' : leftCollapsed ? '48px' : '280px'} 1fr ${videoFocus ? '0px' : '300px'}`, overflow: 'hidden', position: 'relative', zIndex: 1, transition: 'grid-template-columns 0.3s ease' }}>
 
         {/* Left */}
-        <div style={{ borderRight: '1px solid var(--border)', background: 'rgba(13,13,13,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, transition: 'all 0.3s ease', position: 'relative' }}>
+        <div style={{ borderRight: videoFocus ? 'none' : '1px solid var(--border)', background: 'rgba(13,13,13,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, transition: 'all 0.3s ease', position: 'relative' }}>
           {leftCollapsed ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12, gap: 16 }}>
               <button onClick={() => setLeftCollapsed(false)} title="Expand sidebar" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', color: 'var(--green)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>▶</button>
@@ -1553,15 +1546,16 @@ export default function RoomPage() {
           {room.currentTrack ? (
             <>
               {musicMode && <MusicVisualizer track={room.currentTrack} isPlaying={room.isPlaying} />}
-              {ytPlayerEl}
               {!musicMode && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                  <button onClick={() => setVideoFocus(f => !f)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: videoFocus ? 'rgba(52,152,219,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${videoFocus ? 'rgba(52,152,219,0.5)' : 'var(--border)'}`, borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontFamily: 'Oswald', color: videoFocus ? 'var(--cyan)' : 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '0.1em', transition: 'all 0.2s' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: videoFocus ? '100%' : 700, flexShrink: 0 }}>
+                  {ytPlayerEl}
+                  <button onClick={() => setVideoFocus(f => !f)} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.65)', border: `1px solid ${videoFocus ? 'rgba(52,152,219,0.7)' : 'rgba(255,255,255,0.25)'}`, borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'Oswald', color: videoFocus ? 'var(--cyan)' : '#fff', fontSize: '0.72rem', letterSpacing: '0.1em', transition: 'all 0.2s', backdropFilter: 'blur(4px)' }}>
                     {videoFocus ? '✕ EXIT FOCUS' : '⛶ FOCUS'}
                   </button>
                 </div>
               )}
-              <div style={{ width: '100%', maxWidth: videoFocus ? 700 : 500 }}>
+              {musicMode && ytPlayerEl}
+              <div style={{ width: '100%', maxWidth: videoFocus ? '100%' : 500 }}>
                 <div style={{ textAlign: 'center', marginBottom: 14 }}>
                   <div style={{ fontWeight: 600, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
                   <div style={{ color: 'var(--text-dim)', fontSize: '0.875rem', marginTop: 4 }}>{room.currentTrack.channelTitle}</div>
@@ -1603,7 +1597,7 @@ export default function RoomPage() {
         </div>
 
         {/* Right */}
-        <div style={{ borderLeft: '1px solid var(--border)', background: 'rgba(13,13,13,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        <div style={{ borderLeft: videoFocus ? 'none' : '1px solid var(--border)', background: 'rgba(13,13,13,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <div className="tab-bar">
             {[['chat', '💬 Chat'], ['participants', '👥 People'], ['ai', '🐻‍❄️ AI Bond']].map(([id, label]) => (
               <button key={id} className={`tab-btn ${rightTab === id ? 'active' : ''}`} onClick={() => setRightTab(id)} style={{ fontSize: '0.7rem' }}>{label}</button>
