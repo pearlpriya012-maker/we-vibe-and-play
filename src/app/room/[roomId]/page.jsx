@@ -1162,7 +1162,10 @@ export default function RoomPage() {
   // ─── Shared: YouTube player element (kept in DOM always) ───
   const ytPlayerEl = room.currentTrack ? (
     <div style={musicMode
-      ? { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 }
+      // Music mode: hide visually but keep in viewport (iOS Safari blocks off-screen -2000px)
+      ? (isMobile
+          ? { position: 'fixed', top: 0, left: 0, width: 1, height: 1, opacity: 0.001, pointerEvents: 'none', zIndex: -1 }
+          : { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 })
       : isMobile
         ? { width: '100%', aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.8)', flexShrink: 0 }
         : { width: '100%', maxWidth: videoFocus ? 1100 : 700, aspectRatio: '16/9', borderRadius: videoFocus ? 8 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)', flexShrink: 0 }
@@ -1170,7 +1173,7 @@ export default function RoomPage() {
       <YouTube
         ref={playerRef}
         videoId={room.currentTrack.videoId}
-        opts={{ width: '640', height: '360', playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
+        opts={{ width: '640', height: '360', playerVars: { autoplay: isMobile ? 0 : 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
         onReady={handlePlayerReady}
         onStateChange={handleStateChange}
         style={{ width: '100%', height: '100%' }}
