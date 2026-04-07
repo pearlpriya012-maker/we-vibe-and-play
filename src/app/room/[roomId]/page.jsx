@@ -1267,17 +1267,15 @@ export default function RoomPage() {
       ? (isMobile
           ? { position: 'fixed', top: 0, left: 0, width: 1, height: 1, opacity: 0.001, pointerEvents: 'none', zIndex: -1 }
           : { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 })
-      : isMobile
-        ? { width: '100%', aspectRatio: '16/9', overflow: 'hidden', flexShrink: 0 }
-        : { width: '100%', maxWidth: videoFocus ? '100%' : 700, aspectRatio: '16/9', borderRadius: videoFocus ? 0 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)', flexShrink: 0 }
+      : { position: 'relative', width: '100%', paddingTop: '56.25%', overflow: 'hidden', flexShrink: 0, borderRadius: isMobile ? 0 : videoFocus ? 0 : 12, boxShadow: isMobile ? 'none' : '0 20px 60px rgba(0,0,0,0.8)' }
     }>
       <YouTube
         ref={playerRef}
         videoId={room.currentTrack.videoId}
-        opts={{ width: '640', height: '360', playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
+        opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
         onReady={handlePlayerReady}
         onStateChange={handleStateChange}
-        style={{ width: '100%', height: '100%' }}
+        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
       />
     </div>
   ) : null
@@ -1597,6 +1595,7 @@ export default function RoomPage() {
                       onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)' }}
                       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                     >⏭</button>
+                    {volumeWidget}
                   </div>
                 ) : (
                   <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>
