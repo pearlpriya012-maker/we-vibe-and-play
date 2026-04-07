@@ -152,6 +152,31 @@ export async function removeFromQueue(roomId, trackIndex) {
   await updateDoc(doc(db, 'rooms', roomId), { queue: newQueue })
 }
 
+export async function addManyToQueue(roomId, tracks) {
+  if (!tracks || tracks.length === 0) return
+  const room = await getRoom(roomId)
+  if (!room) throw new Error('Room not found')
+  const existing = room.queue || []
+  const cap = Math.max(0, 100 - existing.length)
+  const toAdd = tracks.slice(0, cap)
+  if (!toAdd.length) throw new Error('Queue is full (100 tracks max)')
+  if (!room.currentTrack) {
+    const [first, ...rest] = toAdd
+    await updateDoc(doc(db, 'rooms', roomId), {
+      currentTrack: first,
+      isPlaying: true,
+      currentTime: 0,
+      queue: [...existing, ...rest],
+      lastActivity: serverTimestamp(),
+    })
+    return
+  }
+  await updateDoc(doc(db, 'rooms', roomId), {
+    queue: [...existing, ...toAdd],
+    lastActivity: serverTimestamp(),
+  })
+}
+
 export async function reorderQueue(roomId, newQueue) {
   await updateDoc(doc(db, 'rooms', roomId), { queue: newQueue })
 }

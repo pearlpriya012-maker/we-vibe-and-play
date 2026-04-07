@@ -7,7 +7,7 @@ import YouTube from 'react-youtube'
 import { useAuth } from '@/context/AuthContext'
 import {
   subscribeToRoom, subscribeToMessages,
-  updatePlayback, addToQueue, removeFromQueue,
+  updatePlayback, addToQueue, addManyToQueue, removeFromQueue, reorderQueue,
   setCurrentTrack, skipToNext, leaveRoom,
   sendMessage, addReaction, toggleParticipantQueueAccess,
   kickParticipant, updateMusicMode,
@@ -85,11 +85,12 @@ function ProgressBar({ currentTime, duration, isHost, canControl, onSeek }) {
 }
 
 // ─── YouTube Playlist Panel ───
-function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken }) {
+function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, onShufflePlaylist }) {
   const [playlists, setPlaylists] = useState([])
   const [tracks, setTracks] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedPlaylist, setSelectedPlaylist] = useState(null)
+  const [selectedPlaylistMeta, setSelectedPlaylistMeta] = useState(null)
   const [view, setView] = useState('playlists') // 'playlists' | 'tracks'
 
   useEffect(() => {
@@ -110,8 +111,9 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken }) {
     loadPlaylists()
   }, [])
 
-  async function loadPlaylistTracks(playlistId, title) {
+  async function loadPlaylistTracks(playlistId, title, thumbnail) {
     setSelectedPlaylist(title)
+    setSelectedPlaylistMeta({ id: playlistId, title, thumbnail })
     setView('tracks')
     setLoading(true)
     try {
@@ -135,6 +137,20 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken }) {
         <button onClick={() => setView('playlists')} style={{ background: 'none', border: 'none', color: 'var(--green)', cursor: 'pointer', fontSize: '1rem' }}>←</button>
         <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedPlaylist}</span>
       </div>
+      {tracks.length > 0 && (
+        <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onStartPlaylist?.(tracks, selectedPlaylistMeta); toast.success(`▶ Playing ${tracks.length} songs`) }}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: canAdd ? 'rgba(0,255,136,0.12)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.35)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 8, padding: '9px 0', fontFamily: 'Oswald', fontSize: '0.75rem', letterSpacing: '0.08em', cursor: canAdd ? 'pointer' : 'default' }}>
+            ▶ START
+          </button>
+          <button
+            onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onShufflePlaylist?.([...tracks].sort(() => Math.random() - 0.5), selectedPlaylistMeta); toast.success(`🔀 Shuffling ${tracks.length} songs`) }}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: canAdd ? 'rgba(0,200,255,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,200,255,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--cyan)' : 'rgba(255,255,255,0.25)', borderRadius: 8, padding: '9px 0', fontFamily: 'Oswald', fontSize: '0.75rem', letterSpacing: '0.08em', cursor: canAdd ? 'pointer' : 'default' }}>
+            🔀 SHUFFLE
+          </button>
+        </div>
+      )}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
         {tracks.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>No tracks found</div>
@@ -166,7 +182,7 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken }) {
           <Link href="/settings" className="btn-ghost" style={{ fontSize: '0.8rem', padding: '8px 16px' }}>Go to Settings →</Link>
         </div>
       ) : playlists.map(pl => (
-        <div key={pl.id} onClick={() => loadPlaylistTracks(pl.id, pl.title)} style={{ display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 8, alignItems: 'center', cursor: 'pointer', transition: 'background 0.15s' }}
+        <div key={pl.id} onClick={() => loadPlaylistTracks(pl.id, pl.title, pl.thumbnail)} style={{ display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 8, alignItems: 'center', cursor: 'pointer', transition: 'background 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.background = 'var(--glass-hover)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
           {pl.thumbnail && <img src={pl.thumbnail} alt="" style={{ width: 48, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />}
@@ -182,15 +198,30 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken }) {
 }
 
 // ─── Search & Queue Panel ───
-function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemove, ytAccessToken, initialTab, hideTabs }) {
+function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemove, ytAccessToken, initialTab, hideTabs, roomId, playedHistory = [], onStartPlaylist, onShufflePlaylist }) {
   const [query, setQuery] = useState('')
   const [globalResults, setGlobalResults] = useState([])
   const [playlistResults, setPlaylistResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [tab, setTab] = useState(initialTab || 'search') // 'search' | 'queue' | 'playlists'
+  const [expandedPlaylists, setExpandedPlaylists] = useState(new Set())
+  const [dragIdx, setDragIdx] = useState(null)
+  const [dropIdx, setDropIdx] = useState(null)
+  const [showPlayed, setShowPlayed] = useState(false)
   useEffect(() => { if (initialTab && hideTabs) setTab(initialTab) }, [initialTab])
   const debRef = useRef(null)
   const playlistCacheRef = useRef(null) // cached [{videoId, title, channelTitle, thumbnail, durationFormatted, playlistName}]
+
+  function handleQueueDrop(toIdx) {
+    if (dragIdx === null || dragIdx === toIdx || !roomId) { setDragIdx(null); setDropIdx(null); return }
+    const q = [...(room?.queue || [])]
+    const item = q.splice(dragIdx, 1)[0]
+    const insertAt = dragIdx < toIdx ? toIdx - 1 : toIdx
+    q.splice(insertAt, 0, item)
+    reorderQueue(roomId, q)
+    setDragIdx(null)
+    setDropIdx(null)
+  }
 
   async function loadPlaylistCache() {
     if (playlistCacheRef.current || !ytAccessToken) return
@@ -269,41 +300,135 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
       )}
 
       {tab === 'playlists' ? (
-        <PlaylistPanel onAddToQueue={onAddToQueue} canAdd={canAdd} ytAccessToken={ytAccessToken} />
+        <PlaylistPanel onAddToQueue={onAddToQueue} canAdd={canAdd} ytAccessToken={ytAccessToken} onStartPlaylist={onStartPlaylist} onShufflePlaylist={onShufflePlaylist} />
       ) : tab === 'aibond' ? (
         <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={onAddToQueue} ytAccessToken={ytAccessToken} />
       ) : tab === 'queue' ? (
         /* ── Queue Tab ── */
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
-          <div style={{ fontFamily: 'Oswald', fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-dim)', padding: '4px 6px 8px' }}>Queue ({room?.queue?.length || 0})</div>
+          <style>{`@keyframes eqBeat{0%,100%{height:3px}50%{height:13px}} @keyframes nowPlaying{0%,100%{border-color:rgba(0,255,136,0.2)}50%{border-color:rgba(0,255,136,0.6)}}`}</style>
+
+          {/* ── Played section ── */}
+          {playedHistory.length > 0 && (
+            <>
+              <button onClick={() => setShowPlayed(p => !p)} style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text-dim)', fontFamily: 'Oswald', fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer', textAlign: 'left', padding: '4px 6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {showPlayed ? '▾' : '▸'} ✓ PLAYED ({playedHistory.length})
+              </button>
+              {showPlayed && (
+                <>
+                  {[...playedHistory].reverse().map((track, i) => (
+                    <div key={`ph-${track.videoId}-${i}`} style={{ display: 'flex', gap: 8, padding: '4px 8px', borderRadius: 6, alignItems: 'center', opacity: 0.4 }}>
+                      <img src={track.thumbnail} alt="" style={{ width: 38, height: 26, borderRadius: 3, objectFit: 'cover', flexShrink: 0, filter: 'grayscale(70%)' }} />
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={{ fontSize: '0.68rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
+                      </div>
+                      {canAdd && <button onClick={() => { onAddToQueue(track); toast.success('Re-added!') }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)', borderRadius: 4, padding: '2px 6px', fontSize: '0.6rem', cursor: 'pointer', flexShrink: 0 }}>↻</button>}
+                    </div>
+                  ))}
+                  <div style={{ height: 1, background: 'var(--border)', margin: '4px 6px 8px' }} />
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── Now Playing ── */}
           {room?.currentTrack && (
-            <div style={{ display: 'flex', gap: 8, padding: '6px 8px', borderRadius: 8, alignItems: 'center', background: 'rgba(0,255,136,0.06)', marginBottom: 4, border: '1px solid rgba(0,255,136,0.12)' }}>
+            <div style={{ display: 'flex', gap: 8, padding: '8px', borderRadius: 10, alignItems: 'center', background: 'rgba(0,255,136,0.07)', marginBottom: 8, border: '1px solid rgba(0,255,136,0.2)', animation: 'nowPlaying 2s ease-in-out infinite' }}>
               <img src={room.currentTrack.thumbnail} alt="" style={{ width: 52, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <div style={{ fontSize: '0.6rem', color: 'var(--green)', fontFamily: 'Oswald', letterSpacing: '0.1em', marginBottom: 2 }}>NOW PLAYING</div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
+                <div style={{ fontSize: '0.58rem', color: 'var(--green)', fontFamily: 'Oswald', letterSpacing: '0.1em', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 12 }}>
+                    {[0,1,2,3].map(i => <span key={i} style={{ width: 3, minWidth: 3, background: 'var(--green)', borderRadius: 2, display: 'inline-block', animation: room.isPlaying ? `eqBeat ${0.5+i*0.15}s ease-in-out ${i*0.1}s infinite` : 'none', height: room.isPlaying ? 8 : 3 }} />)}
+                  </span>
+                  NOW PLAYING
+                </div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)' }}>{room.currentTrack.channelTitle}</div>
               </div>
             </div>
           )}
+
+          {/* ── Upcoming ── */}
+          <div style={{ fontFamily: 'Oswald', fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-dim)', padding: '2px 6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            UPCOMING ({room?.queue?.length || 0}){isHost && room?.queue?.length > 0 && <span style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.2)' }}>— drag ⦿ to reorder</span>}
+          </div>
           {!room?.queue?.length ? (
-            <div style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>Queue is empty. Search and add tracks!</div>
-          ) : room.queue.map((track, i) => (
-            <div key={`${track.videoId}-${i}`} style={{ display: 'flex', gap: 8, padding: '5px 8px', borderRadius: 8, alignItems: 'center' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--glass-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              <img src={track.thumbnail} alt="" style={{ width: 44, height: 30, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
-              <div style={{ flex: 1, overflow: 'hidden' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>{track.channelTitle}</div>
-              </div>
-              {isHost && (
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button onClick={() => onPlayNow(track, i)} style={{ background: 'none', border: 'none', color: 'var(--green)', cursor: 'pointer', fontSize: '0.75rem' }} title="Play now">▶</button>
-                  <button onClick={() => onRemove(i)} style={{ background: 'none', border: 'none', color: 'var(--pink)', cursor: 'pointer', fontSize: '0.75rem' }} title="Remove">✕</button>
+            <div style={{ padding: '16px 12px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>Queue is empty. Search and add tracks!</div>
+          ) : (() => {
+            const groups = []
+            const seenPl = new Map()
+            ;(room.queue || []).forEach((track, qi) => {
+              if (track.playlistId) {
+                if (!seenPl.has(track.playlistId)) {
+                  seenPl.set(track.playlistId, groups.length)
+                  groups.push({ type: 'playlist', id: track.playlistId, name: track.playlistName, thumb: track.playlistThumb, items: [{ ...track, qi }] })
+                } else {
+                  groups[seenPl.get(track.playlistId)].items.push({ ...track, qi })
+                }
+              } else {
+                groups.push({ type: 'track', ...track, qi })
+              }
+            })
+            return groups.map((g, gi) => g.type === 'playlist' ? (
+              <div key={`pl-${g.id}-${gi}`} style={{ marginBottom: 4 }}>
+                <div
+                  onClick={() => setExpandedPlaylists(prev => { const s = new Set(prev); s.has(g.id) ? s.delete(g.id) : s.add(g.id); return s })}
+                  style={{ display: 'flex', gap: 8, padding: '7px 8px', borderRadius: 8, alignItems: 'center', background: 'rgba(0,200,255,0.05)', border: '1px solid rgba(0,200,255,0.12)', cursor: 'pointer', userSelect: 'none' }}>
+                  {g.thumb ? <img src={g.thumb} alt="" style={{ width: 44, height: 30, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} /> : <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>📋</span>}
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name || 'Playlist'}</div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)' }}>{g.items.length} songs</div>
+                  </div>
+                  <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem', transition: 'transform 0.2s', transform: expandedPlaylists.has(g.id) ? 'rotate(90deg)' : 'none', display: 'inline-block' }}>›</span>
+                  {isHost && <button onClick={e => { e.stopPropagation(); reorderQueue(roomId, (room.queue||[]).filter(t => t.playlistId !== g.id)) }} style={{ background: 'none', border: 'none', color: 'var(--pink)', cursor: 'pointer', fontSize: '0.8rem', padding: '0 2px', flexShrink: 0 }} title="Remove playlist">✕</button>}
                 </div>
-              )}
-            </div>
-          ))}
+                {expandedPlaylists.has(g.id) && (
+                  <div style={{ paddingLeft: 8, borderLeft: '2px solid rgba(0,200,255,0.15)', marginLeft: 8 }}>
+                    {g.items.map((t, ti) => (
+                      <div key={`${t.videoId}-${ti}`}
+                        draggable={isHost}
+                        onDragStart={e => { e.dataTransfer.setData('text/plain', String(t.qi)); setDragIdx(t.qi) }}
+                        onDragOver={e => { e.preventDefault(); setDropIdx(t.qi) }}
+                        onDrop={e => { e.preventDefault(); handleQueueDrop(t.qi) }}
+                        onDragEnd={() => { setDragIdx(null); setDropIdx(null) }}
+                        style={{ display: 'flex', gap: 8, padding: '4px 6px', borderRadius: 6, alignItems: 'center', opacity: dragIdx === t.qi ? 0.35 : 1, borderTop: dropIdx === t.qi && dragIdx !== null && dragIdx !== t.qi ? '2px solid var(--green)' : '2px solid transparent', transition: 'border-color 0.1s' }}>
+                        {isHost && <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, userSelect: 'none' }}>⣿</span>}
+                        <img src={t.thumbnail} alt="" style={{ width: 38, height: 26, borderRadius: 3, objectFit: 'cover', flexShrink: 0 }} />
+                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                          <div style={{ fontSize: '0.68rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                        </div>
+                        {isHost && <div style={{ display: 'flex', gap: 3 }}>
+                          <button onClick={() => onPlayNow(t, t.qi)} style={{ background: 'none', border: 'none', color: 'var(--green)', cursor: 'pointer', fontSize: '0.72rem' }}>▶</button>
+                          <button onClick={() => onRemove(t.qi)} style={{ background: 'none', border: 'none', color: 'var(--pink)', cursor: 'pointer', fontSize: '0.72rem' }}>✕</button>
+                        </div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div key={`${g.videoId}-${gi}`}
+                draggable={isHost}
+                onDragStart={e => { e.dataTransfer.setData('text/plain', String(g.qi)); setDragIdx(g.qi) }}
+                onDragOver={e => { e.preventDefault(); setDropIdx(g.qi) }}
+                onDrop={e => { e.preventDefault(); handleQueueDrop(g.qi) }}
+                onDragEnd={() => { setDragIdx(null); setDropIdx(null) }}
+                style={{ display: 'flex', gap: 8, padding: '5px 8px', borderRadius: 8, alignItems: 'center', opacity: dragIdx === g.qi ? 0.35 : 1, borderTop: dropIdx === g.qi && dragIdx !== null && dragIdx !== g.qi ? '2px solid var(--green)' : '2px solid transparent', transition: 'border-color 0.1s' }}
+                onMouseEnter={e => { if (dragIdx === null) e.currentTarget.style.background = 'var(--glass-hover)' }}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                {isHost && <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.9rem', cursor: 'grab', flexShrink: 0, userSelect: 'none' }}>⣿</span>}
+                <img src={g.thumbnail} alt="" style={{ width: 44, height: 30, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>{g.channelTitle}</div>
+                </div>
+                {isHost && <div style={{ display: 'flex', gap: 4 }}>
+                  <button onClick={() => onPlayNow(g, g.qi)} style={{ background: 'none', border: 'none', color: 'var(--green)', cursor: 'pointer', fontSize: '0.75rem' }}>▶</button>
+                  <button onClick={() => onRemove(g.qi)} style={{ background: 'none', border: 'none', color: 'var(--pink)', cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
+                </div>}
+              </div>
+            ))
+          })()}
         </div>
       ) : (
         <>
@@ -690,6 +815,8 @@ export default function RoomPage() {
   const tickRef = useRef(null)
   const volumePopupRef = useRef(null)
   const lastUpdateRef = useRef(0)  // Track recent updates to prevent sync loops
+  const [playedHistory, setPlayedHistory] = useState([])
+  const prevTrackRef = useRef(null)
 
   const isHost = room?.hostId === user?.uid
   // canAdd = can add songs AND control playback (when host grants access)
@@ -765,6 +892,17 @@ export default function RoomPage() {
       setFloatMsg(null)
     }
   }, [mobileTab])
+
+  // ─── Track played history ───
+  useEffect(() => {
+    if (!room) return
+    const curr = room.currentTrack
+    const prev = prevTrackRef.current
+    if (prev && curr?.videoId !== prev.videoId) {
+      setPlayedHistory(h => [...h, prev])
+    }
+    prevTrackRef.current = curr || null
+  }, [room?.currentTrack?.videoId])
 
   // ─── Non-host sync ───
   useEffect(() => {
@@ -854,6 +992,23 @@ export default function RoomPage() {
 
   async function handleAddToQueue(track) {
     try { await addToQueue(roomId, track) } catch (err) { toast.error(err.message) }
+  }
+
+  async function handleStartPlaylist(tracks, playlistMeta) {
+    try {
+      const tagged = tracks.map(t => ({ ...t, playlistId: playlistMeta?.id, playlistName: playlistMeta?.title, playlistThumb: playlistMeta?.thumbnail }))
+      await addManyToQueue(roomId, tagged)
+      toast.success(`▶ Playing ${tracks.length} songs`)
+    } catch (err) { toast.error(err.message) }
+  }
+
+  async function handleShufflePlaylist(tracks, playlistMeta) {
+    try {
+      const shuffled = [...tracks].sort(() => Math.random() - 0.5)
+      const tagged = shuffled.map(t => ({ ...t, playlistId: playlistMeta?.id, playlistName: playlistMeta?.title, playlistThumb: playlistMeta?.thumbnail }))
+      await addManyToQueue(roomId, tagged)
+      toast.success(`🔀 Shuffling ${tracks.length} songs`)
+    } catch (err) { toast.error(err.message) }
   }
 
   async function handlePlayNow(track, index) {
@@ -1114,7 +1269,7 @@ export default function RoomPage() {
           {/* ── Tab Content ── */}
           <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
             <div style={{ display: mobileTab === 'search' || mobileTab === 'queue' || mobileTab === 'playlists' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} hideTabs={true} />
+              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} hideTabs={true} roomId={roomId} playedHistory={playedHistory} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} />
             </div>
             <div style={{ display: mobileTab === 'aibond' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={user?.youtubeAccessToken} />
@@ -1198,7 +1353,7 @@ export default function RoomPage() {
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)' }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}>◀</button>
               </div>
-              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} />
+              <SearchAndQueue room={room} isHost={isHost} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => isHost && removeFromQueue(roomId, i)} ytAccessToken={user?.youtubeAccessToken} roomId={roomId} playedHistory={playedHistory} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} />
             </>
           )}
         </div>
