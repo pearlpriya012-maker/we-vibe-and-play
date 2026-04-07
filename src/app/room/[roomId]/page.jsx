@@ -147,9 +147,10 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken }) {
               <div style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>{track.channelTitle} · {track.durationFormatted}</div>
             </div>
-            {canAdd && (
-              <button onClick={() => { onAddToQueue(track); toast.success('Added!') }} style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', color: 'var(--green)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'Oswald', flexShrink: 0 }}>+ ADD</button>
-            )}
+            <button
+              onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue(track); toast.success('Added!') }}
+              style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0 }}
+            >+ ADD</button>
           </div>
         ))}
       </div>
@@ -247,9 +248,10 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
           {showPlaylist && track.playlistName && <span style={{ color: 'rgba(0,255,136,0.6)', marginLeft: 4 }}>· {track.playlistName}</span>}
         </div>
       </div>
-      {canAdd && (
-        <button onClick={() => { onAddToQueue(track); toast.success('Added!') }} style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', color: 'var(--green)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'Oswald', flexShrink: 0 }}>+ ADD</button>
-      )}
+      <button
+        onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue(track); toast.success('Added!') }}
+        style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0 }}
+      >+ ADD</button>
     </div>
   )
 
@@ -640,7 +642,10 @@ function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
                       <div style={{ fontWeight: 500, fontSize: '0.85rem', marginBottom: 2 }}>{rec.title}</div>
                       <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{rec.artist}</div>
                     </div>
-                    {canAdd && <button onClick={() => handleAdd(rec)} style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', color: 'var(--green)', borderRadius: 6, padding: '4px 10px', fontSize: '0.68rem', cursor: 'pointer', fontFamily: 'Oswald', flexShrink: 0, whiteSpace: 'nowrap' }}>+ ADD</button>}
+                    <button
+                      onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } handleAdd(rec) }}
+                      style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.68rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0, whiteSpace: 'nowrap' }}
+                    >+ ADD</button>
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontStyle: 'italic', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 8 }}>💡 {rec.reasoning}</div>
                 </div>
@@ -777,12 +782,12 @@ export default function RoomPage() {
         p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
         return
       }
-      if (room.isPlaying) p.playVideo?.()
-      else p.pauseVideo?.()
-      const ct = p.getCurrentTime?.() || 0
-      if (Math.abs(ct - (room.currentTime || 0)) > 0.5) p.seekTo?.(room.currentTime || 0, true)
+      // Guard: only toggle if state actually differs — prevents playVideo() spam every second
+      const state = p.getPlayerState?.()
+      if (room.isPlaying && state !== 1) p.playVideo?.()
+      else if (!room.isPlaying && state !== 2) p.pauseVideo?.()
     } catch {}
-  }, [room?.isPlaying, room?.currentTime, room?.currentTrack?.videoId, isHost])
+  }, [room?.isPlaying, room?.currentTrack?.videoId, isHost])
 
   // ─── Host: push timestamp every 5s ───
   useEffect(() => {
@@ -792,7 +797,7 @@ export default function RoomPage() {
         const t = ytPlayerRef.current?.getCurrentTime?.()
         if (typeof t === 'number' && isFinite(t)) updatePlayback(roomId, { currentTime: t })
       } catch {}
-    }, 1000)
+    }, 5000)
     return () => clearInterval(iv)
   }, [isHost, room?.isPlaying, roomId])
 
