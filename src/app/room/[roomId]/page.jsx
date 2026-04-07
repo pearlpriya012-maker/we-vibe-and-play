@@ -973,12 +973,6 @@ export default function RoomPage() {
     prevTrackRef.current = curr || null
   }, [room?.currentTrack?.videoId])
 
-  // ─── Mobile: reset tap lock when track changes so overlay shows for each new song ───
-  useEffect(() => {
-    if (!isMobile) return
-    setMobileTapped(false)
-  }, [room?.currentTrack?.videoId])
-
   // ─── Non-host sync ───
   useEffect(() => {
     if (!room || isHost) return
@@ -992,16 +986,19 @@ export default function RoomPage() {
       if (!p) return
       const vid = p.getVideoData?.()?.video_id
       if (room.currentTrack?.videoId && vid !== room.currentTrack.videoId) {
-        if (isMobile) {
-          // Mobile: cue only — tap overlay will start playback after user interacts
+        if (isMobile && !mobileTapped) {
+          // Audio not yet unlocked — cue only, guest will tap the button to start
           p.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        } else if (isMobile && mobileTapped) {
+          // Audio already unlocked by prior user tap — iOS allows programmatic playVideo() now
+          p.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+          setTimeout(() => { try { p.playVideo?.() } catch {} }, 400)
         } else {
           p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
         }
         return
       }
-      // Guard: only toggle if state actually differs — prevents playVideo() spam every second
-      // On mobile, only play if user has already tapped (browser autoplay policy)
+      // Guard: only toggle if state actually differs — prevents playVideo() spam
       const state = p.getPlayerState?.()
       if (room.isPlaying && state !== 1 && (!isMobile || mobileTapped)) p.playVideo?.()
       else if (!room.isPlaying && state !== 2) p.pauseVideo?.()
@@ -1024,15 +1021,18 @@ export default function RoomPage() {
     try {
       ytPlayerRef.current = e.target   // store the real YT player object here
       if (!room?.currentTrack?.videoId) return
-      if (!isMobile && room.isPlaying) {
+      if (!isMobile) {
         // Desktop: autoplay is allowed
+        if (room.isPlaying) e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        else e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        setMobileTapped(true)
+      } else if (mobileTapped) {
+        // Mobile, audio already unlocked — load and play
         e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       } else {
-        // Mobile: never autoplay — browser blocks it; tap overlay will call playVideo()
+        // Mobile, not yet unlocked — cue only, user will tap the button
         e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       }
-      // On desktop, mark as tapped (no overlay needed); on mobile, overlay handles it
-      if (!isMobile) setMobileTapped(true)
     } catch {}
   }
 
@@ -1234,9 +1234,17 @@ export default function RoomPage() {
               {volumeWidget}
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-              <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</div>
-              {volumeWidget}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+              {isMobile && !mobileTapped && room.isPlaying && (
+                <button
+                  onClick={() => { setMobileTapped(true); try { ytPlayerRef.current?.playVideo?.() } catch {} }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,255,136,0.15)', border: '1px solid rgba(0,255,136,0.5)', borderRadius: 24, padding: '10px 22px', cursor: 'pointer', fontFamily: 'Oswald', fontSize: '0.85rem', letterSpacing: '0.1em', color: 'var(--green)', boxShadow: '0 0 16px rgba(0,255,136,0.25)', animation: 'pulse 1.5s ease-in-out infinite' }}
+                >🔊 TAP TO HEAR</button>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</div>
+                {volumeWidget}
+              </div>
             </div>
           )}
         </div>
@@ -1292,16 +1300,6 @@ export default function RoomPage() {
 
         {/* Mobile Content Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
-
-          {/* Tap-to-unlock overlay */}
-          {isMobile && !mobileTapped && room?.currentTrack && (
-            <div onClick={() => { setMobileTapped(true); try { ytPlayerRef.current?.playVideo?.() } catch {} }}
-              style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', cursor: 'pointer' }}>
-              <div style={{ fontSize: '3rem' }}>🎵</div>
-              <div style={{ fontFamily: 'Oswald', fontSize: '1rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#fff' }}>Tap to Start Playing</div>
-              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Mobile requires a tap to unlock audio</div>
-            </div>
-          )}
 
           {/* ── Participants strip (top) ── */}
           <div style={{ flexShrink: 0, borderBottom: '1px solid var(--border)', padding: '7px 12px', background: 'rgba(13,13,13,0.7)' }}>
