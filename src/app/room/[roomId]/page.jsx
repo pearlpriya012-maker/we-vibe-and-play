@@ -973,6 +973,20 @@ export default function RoomPage() {
     prevTrackRef.current = curr || null
   }, [room?.currentTrack?.videoId])
 
+  // ─── Mobile: after audio unlock, auto-play when track changes ───
+  useEffect(() => {
+    if (!isMobile || !mobileTapped || !room?.currentTrack?.videoId || !room?.isPlaying) return
+    const t = setTimeout(() => {
+      try {
+        const p = ytPlayerRef.current
+        if (!p) return
+        const state = p.getPlayerState?.()
+        if (state !== 1) p.playVideo?.()
+      } catch {}
+    }, 400)
+    return () => clearTimeout(t)
+  }, [room?.currentTrack?.videoId, mobileTapped, isMobile])
+
   // ─── Non-host sync ───
   useEffect(() => {
     if (!room || isHost) return
@@ -1019,19 +1033,15 @@ export default function RoomPage() {
 
   function handlePlayerReady(e) {
     try {
-      ytPlayerRef.current = e.target   // store the real YT player object here
+      ytPlayerRef.current = e.target
       if (!room?.currentTrack?.videoId) return
-      if (!isMobile) {
-        // Desktop: autoplay is allowed
+      if (isMobile) {
+        // Mobile: ALWAYS cue only — never autoplay from code, user tap triggers playVideo()
+        e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+      } else {
+        // Desktop: autoplay is fine
         if (room.isPlaying) e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
         else e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
-        setMobileTapped(true)
-      } else if (mobileTapped) {
-        // Mobile, audio already unlocked — load and play
-        e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
-      } else {
-        // Mobile, not yet unlocked — cue only, user will tap the button
-        e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       }
     } catch {}
   }
@@ -1048,11 +1058,15 @@ export default function RoomPage() {
 
   async function handlePlayPause() {
     if (!canControl) return
-    lastUpdateRef.current = Date.now()  // Mark that we're making a change
+    lastUpdateRef.current = Date.now()
     const p = ytPlayerRef.current
     if (!p) return
-    setMobileTapped(true)  // dismiss tap overlay when user presses play/pause directly
-    if (room.isPlaying) {
+    setMobileTapped(true)
+    // Use ACTUAL player state — not room.isPlaying — because on mobile the player
+    // is cued (not playing) while Firebase already says isPlaying:true
+    const state = p.getPlayerState?.()
+    const actuallyPlaying = state === 1 // YT.PlayerState.PLAYING
+    if (actuallyPlaying) {
       p.pauseVideo()
       await updatePlayback(roomId, { isPlaying: false, currentTime: p.getCurrentTime() })
     } else {
