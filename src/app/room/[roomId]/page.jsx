@@ -1016,6 +1016,8 @@ export default function RoomPage() {
       const vid = p.getVideoData?.()?.video_id
       if (room.currentTrack?.videoId && vid !== room.currentTrack.videoId) {
         p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        // Re-unmute after loading — mobile may re-mute on new video load
+        p.unMute?.(); p.setVolume?.(volume)
         return
       }
       const state = p.getPlayerState?.()
@@ -1063,6 +1065,7 @@ export default function RoomPage() {
       const vid = p.getVideoData?.()?.video_id
       if (room.currentTrack?.videoId && vid !== room.currentTrack.videoId) {
         p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
+        p.unMute?.(); p.setVolume?.(volume)
         return
       }
       const state = p.getPlayerState?.()
@@ -1089,7 +1092,10 @@ export default function RoomPage() {
     try {
       ytPlayerRef.current = e.target
       if (!room?.currentTrack?.videoId) return
-      // Audio is always unlocked here — either desktop, or user already tapped Enter Room
+      // Always unmute immediately — mute:1 in playerVars enables mobile autoplay
+      // but we restore volume right away so the user hears audio
+      e.target.unMute()
+      e.target.setVolume(volume)
       if (room.isPlaying) e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
       else e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
     } catch {}
@@ -1296,7 +1302,7 @@ export default function RoomPage() {
       <YouTube
         ref={playerRef}
         videoId={room.currentTrack.videoId}
-        opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
+        opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, mute: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
         onReady={handlePlayerReady}
         onStateChange={handleStateChange}
         onError={handlePlayerError}
