@@ -48,7 +48,10 @@ export async function GET(request) {
       durationMap[v.id] = parseDuration(v.contentDetails.duration)
     })
 
-    const results = searchData.items.map((item) => ({
+    // Filter out auto-generated "- Topic" channel videos — these are always blocked on mobile browsers
+    const results = searchData.items
+      .filter(item => !item.snippet.channelTitle?.endsWith('- Topic'))
+      .map((item) => ({
       videoId: item.id.videoId,
       title: item.snippet.title,
       channelTitle: item.snippet.channelTitle,

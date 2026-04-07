@@ -1004,8 +1004,23 @@ export default function RoomPage() {
       })
     }
     prevTrackRef.current = curr || null
-    // Clear any stuck-video timer when the track changes — fresh timer starts in handlePlayerReady
+    // Clear any previous stuck-video timer
     clearTimeout(mobileSkipTimerRef.current)
+    // Start a fresh 7s timer every time the track changes on mobile.
+    // handlePlayerReady only fires on initial mount — this covers all subsequent track changes.
+    if (curr && room.isPlaying && isMobile) {
+      mobileSkipTimerRef.current = setTimeout(async () => {
+        const state = ytPlayerRef.current?.getPlayerState?.()
+        if (state === -1) {
+          if (isHost) await skipToNext(roomId)
+          else {
+            const { updateDoc, doc } = await import('firebase/firestore')
+            const { db } = await import('@/lib/firebase')
+            await updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() })
+          }
+        }
+      }, 7000)
+    }
   }, [room?.currentTrack?.videoId])
 
   // ─── Non-host sync — audio always unlocked here (past entry gate) ───
