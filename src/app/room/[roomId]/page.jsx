@@ -23,28 +23,43 @@ function Avatar({ user, size = 32 }) {
 }
 
 // ─── Music Visualizer ───
-function MusicVisualizer({ track, isPlaying }) {
-  const bars = Array.from({ length: 28 })
+function MusicVisualizer({ track, isPlaying, compact = false }) {
+  if (compact) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2.5, height: 22, flexShrink: 0 }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} style={{ width: 3, borderRadius: 2, background: i % 2 === 0 ? 'var(--green)' : 'var(--cyan)', animation: isPlaying ? `mobileBar ${0.38 + i * 0.11}s ease-in-out ${i * 0.09}s infinite alternate` : 'none', height: isPlaying ? `${40 + i * 10}%` : '20%', transition: 'height 0.3s', opacity: 0.9 }} />
+        ))}
+        <style>{`@keyframes mobileBar { from{height:15%} to{height:100%} }`}</style>
+      </div>
+    )
+  }
   return (
-    <div style={{ width: '100%', maxWidth: 460, position: 'relative', borderRadius: 20, overflow: 'hidden', boxShadow: '0 20px 80px rgba(0,0,0,0.9),0 0 60px rgba(0,255,136,0.1)', aspectRatio: '1/1', background: '#000' }}>
-      <img src={track.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5, filter: 'blur(8px) brightness(0.5)', position: 'absolute', inset: 0 }} />
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0.3) 0%,rgba(0,0,0,0.8) 100%)' }} />
-      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-58%)', width: '52%', aspectRatio: '1/1', borderRadius: '50%', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.8),0 0 30px rgba(0,255,136,0.2)', border: '3px solid rgba(0,255,136,0.3)', animation: isPlaying ? 'spinAlbum 12s linear infinite' : 'none' }}>
+    <div style={{ width: '100%', maxWidth: 420, position: 'relative', borderRadius: 24, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.9), 0 0 80px rgba(0,255,136,0.06)', aspectRatio: '1/1', background: '#000', flexShrink: 0 }}>
+      {/* Blurred background */}
+      <img src={track.thumbnail} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(28px) brightness(0.3) saturate(1.6)', transform: 'scale(1.12)' }} />
+      {/* Radial vignette */}
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 50% 44%, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.65) 65%, rgba(0,0,0,0.93) 100%)' }} />
+      {/* Pulsing rings */}
+      {isPlaying && [0, 1, 2].map(i => (
+        <div key={i} style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-56%)', width: `${56 + i * 13}%`, aspectRatio: '1/1', borderRadius: '50%', border: '1px solid rgba(0,255,136,0.13)', animation: `pulseRing ${1.3 + i * 0.5}s ease-out ${i * 0.45}s infinite` }} />
+      ))}
+      {/* Spinning album disc */}
+      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-56%)', width: '50%', aspectRatio: '1/1', borderRadius: '50%', overflow: 'hidden', boxShadow: '0 0 0 3px rgba(0,255,136,0.4), 0 0 48px rgba(0,255,136,0.12), 0 16px 48px rgba(0,0,0,0.8)', animation: isPlaying ? 'spinAlbum 16s linear infinite' : 'none' }}>
         <img src={track.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       </div>
-      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-58%)', width: 16, height: 16, borderRadius: '50%', background: '#000', border: '3px solid var(--green)', boxShadow: '0 0 10px var(--green)', zIndex: 2 }} />
-      {isPlaying && Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} style={{ position: 'absolute', bottom: '28%', left: `${8 + i * 8.5}%`, width: 5, height: 5, borderRadius: '50%', background: i % 3 === 0 ? 'var(--green)' : i % 3 === 1 ? 'var(--cyan)' : 'var(--pink)', boxShadow: `0 0 8px ${i % 3 === 0 ? 'var(--green)' : i % 3 === 1 ? 'var(--cyan)' : 'var(--pink)'}`, animation: `fireUp ${0.8 + (i % 4) * 0.3}s ease-in ${i * 0.12}s infinite` }} />
-      ))}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '26%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, padding: '0 14px 14px', background: 'linear-gradient(0deg,rgba(0,0,0,0.9) 0%,transparent 100%)' }}>
-        {bars.map((_, i) => (
-          <div key={i} style={{ flex: 1, borderRadius: '2px 2px 0 0', background: `linear-gradient(180deg,${i % 3 === 0 ? 'var(--green)' : i % 3 === 1 ? 'var(--cyan)' : 'var(--purple)'},transparent)`, animation: isPlaying ? `barBeat ${0.3 + (i % 6) * 0.12}s ease-in-out ${i * 0.04}s infinite alternate` : 'none', height: isPlaying ? `${15 + (i % 9) * 9}%` : '8%', transition: 'height 0.4s' }} />
+      {/* Center spindle */}
+      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-56%)', width: 13, height: 13, borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 2.5px var(--green), 0 0 16px var(--green)', zIndex: 2 }} />
+      {/* Equalizer bars */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '22%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, padding: '0 16px 14px', background: 'linear-gradient(0deg, rgba(0,0,0,0.92) 0%, transparent 100%)' }}>
+        {Array.from({ length: 22 }).map((_, i) => (
+          <div key={i} style={{ flex: 1, borderRadius: '3px 3px 0 0', background: i % 3 === 0 ? 'var(--green)' : i % 3 === 1 ? 'var(--cyan)' : '#a855f7', animation: isPlaying ? `barBeat2 ${0.36 + (i % 7) * 0.09}s ease-in-out ${i * 0.043}s infinite alternate` : 'none', height: isPlaying ? `${18 + (i % 8) * 10}%` : '6%', transition: 'height 0.5s ease', opacity: isPlaying ? 0.88 : 0.25 }} />
         ))}
       </div>
       <style>{`
-        @keyframes spinAlbum { from{transform:translate(-50%,-58%) rotate(0deg)} to{transform:translate(-50%,-58%) rotate(360deg)} }
-        @keyframes fireUp { 0%{transform:translateY(0) scale(1);opacity:1} 100%{transform:translateY(-60px) scale(0);opacity:0} }
-        @keyframes barBeat { from{height:8%} to{height:85%} }
+        @keyframes spinAlbum { from{transform:translate(-50%,-56%) rotate(0deg)} to{transform:translate(-50%,-56%) rotate(360deg)} }
+        @keyframes pulseRing { 0%{opacity:0.5;transform:translate(-50%,-56%) scale(1)} 100%{opacity:0;transform:translate(-50%,-56%) scale(1.35)} }
+        @keyframes barBeat2 { from{height:6%} to{height:90%} }
       `}</style>
     </div>
   )
@@ -1267,7 +1282,9 @@ export default function RoomPage() {
       ? (isMobile
           ? { position: 'fixed', top: 0, left: 0, width: 1, height: 1, opacity: 0.001, pointerEvents: 'none', zIndex: -1 }
           : { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 })
-      : { position: 'relative', width: '100%', paddingTop: '56.25%', overflow: 'hidden', flexShrink: 0 }
+      : (!isMobile && videoFocus)
+        ? { position: 'relative', width: 'min(100%, calc((100vh - 270px) * 1.778))', aspectRatio: '16/9', overflow: 'hidden', flexShrink: 0 }
+        : { position: 'relative', width: '100%', paddingTop: '56.25%', overflow: 'hidden', flexShrink: 0 }
     }>
       <YouTube
         ref={playerRef}
@@ -1318,6 +1335,7 @@ export default function RoomPage() {
               <div style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.72rem', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.channelTitle}</div>
             </div>
+            <MusicVisualizer track={room.currentTrack} isPlaying={room.isPlaying} compact={true} />
           </div>
         )}
         {ytPlayerEl}
@@ -1558,12 +1576,12 @@ export default function RoomPage() {
         </div>
 
         {/* Center */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: videoFocus ? '16px' : '20px 24px', gap: 16, background: 'rgba(10,10,10,0.4)', overflow: 'auto', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: videoFocus ? '12px 20px' : '20px 24px', gap: videoFocus ? 10 : 16, background: 'rgba(10,10,10,0.4)', overflow: 'hidden', minWidth: 0 }}>
           {room.currentTrack ? (
             <>
               {musicMode && <MusicVisualizer track={room.currentTrack} isPlaying={room.isPlaying} />}
               {!musicMode && (
-                <div style={{ position: 'relative', width: '100%', maxWidth: videoFocus ? '100%' : 700, flexShrink: 0, borderRadius: videoFocus ? 0 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+                <div style={{ position: 'relative', width: videoFocus ? 'min(100%, calc((100vh - 270px) * 1.778))' : '100%', maxWidth: videoFocus ? undefined : 700, flexShrink: 0, borderRadius: videoFocus ? 4 : 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
                   {ytPlayerEl}
                   <button onClick={() => setVideoFocus(f => !f)} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.65)', border: `1px solid ${videoFocus ? 'rgba(52,152,219,0.7)' : 'rgba(255,255,255,0.25)'}`, borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'Oswald', color: videoFocus ? 'var(--cyan)' : '#fff', fontSize: '0.72rem', letterSpacing: '0.1em', transition: 'all 0.2s', backdropFilter: 'blur(4px)' }}>
                     {videoFocus ? '✕ EXIT FOCUS' : '⛶ FOCUS'}
@@ -1571,7 +1589,7 @@ export default function RoomPage() {
                 </div>
               )}
               {musicMode && ytPlayerEl}
-              <div style={{ width: '100%', maxWidth: videoFocus ? '100%' : 500 }}>
+              <div style={{ width: '100%', maxWidth: videoFocus ? 'min(100%, calc((100vh - 270px) * 1.778))' : 500 }}>
                 <div style={{ textAlign: 'center', marginBottom: 14 }}>
                   <div style={{ fontWeight: 600, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
                   <div style={{ color: 'var(--text-dim)', fontSize: '0.875rem', marginTop: 4 }}>{room.currentTrack.channelTitle}</div>
