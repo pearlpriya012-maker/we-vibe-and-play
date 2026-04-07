@@ -6,6 +6,9 @@ import '@/styles/globals.css'
 export const metadata = {
   title: 'WE🕊️ — Collaborative Music Rooms',
   description: 'Watch. Listen. Together — in perfect sync.',
+  verification: {
+    google: 'googlee2d3f53fb9609dfa',
+  },
   icons: {
     icon: '/favicon.svg',
     shortcut: '/favicon.svg',
