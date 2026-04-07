@@ -1091,6 +1091,14 @@ export default function RoomPage() {
     } catch {}
   }, [room?.seekCommand?.at])
 
+  // ─── Host: act on skipRequested from a mobile participant who can't play the video ───
+  useEffect(() => {
+    if (!isHost || !room?.skipRequested) return
+    const age = Date.now() - room.skipRequested
+    if (age > 15000) return // stale, ignore
+    skipToNext(roomId)
+  }, [room?.skipRequested])
+
   function handlePlayerReady(e) {
     try {
       ytPlayerRef.current = e.target
@@ -1104,13 +1112,21 @@ export default function RoomPage() {
       // Mobile: if the video is supposed to play but stays UNSTARTED after 7s,
       // it's showing "This content can't be played on mobile browser" inside the iframe.
       // That message never fires onError, so we detect it via timeout.
-      if (room.isPlaying && isHost && isMobile) {
+      // Run on ALL mobile users (not just host) — host will receive the skip request
+      // via Firestore even if it comes from a participant.
+      if (room.isPlaying && isMobile) {
         clearTimeout(mobileSkipTimerRef.current)
         mobileSkipTimerRef.current = setTimeout(async () => {
           const state = ytPlayerRef.current?.getPlayerState?.()
-          // -1 = UNSTARTED, 3 = BUFFERING for too long — both mean can't play
-          if (state === -1 || state === 3) {
-            await skipToNext(roomId)
+          // -1 = UNSTARTED = video can't play (mobile restriction showing error overlay)
+          if (state === -1) {
+            if (isHost) await skipToNext(roomId)
+            // Non-host: notify host via Firestore flag, host will skip
+            else {
+              const { updateDoc, doc } = await import('firebase/firestore')
+              const { db } = await import('@/lib/firebase')
+              await updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() })
+            }
           }
         }, 7000)
       }
@@ -1135,9 +1151,10 @@ export default function RoomPage() {
   async function handlePlayerError(e) {
     // Only host handles errors to avoid all participants race-skipping
     if (!isHost) return
-    // Ignore code 5 (HTML5/network hiccup) — fires on valid songs on mobile due to connectivity
-    // Skip only on: 2=bad id, 100=not found, 101/150=embedding blocked
-    if (e.data === 5) return
+    // code 5 = "cannot be played in HTML5 player" = "can't be played on mobile browser"
+    // code 2 = invalid id, 100 = not found, 101/150 = embedding blocked
+    // All of these are unplayable — skip to next
+    clearTimeout(mobileSkipTimerRef.current)
     await skipToNext(roomId)
   }
 
