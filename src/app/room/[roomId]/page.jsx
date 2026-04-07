@@ -996,7 +996,25 @@ export default function RoomPage() {
     } catch {}
   }, [room?.isPlaying, room?.currentTrack?.videoId, isHost])
 
-  // ─── Host: push timestamp every 5s ───
+  // ─── Non-host: seek correction when drifting >2s from host ───
+  useEffect(() => {
+    if (!room || isHost || !room.currentTrack?.videoId) return
+    try {
+      const p = ytPlayerRef.current
+      if (!p) return
+      const state = p.getPlayerState?.()
+      // Only correct when playing (state 1) or buffering (state 3)
+      if (state !== 1 && state !== 3) return
+      const guestTime = p.getCurrentTime?.()
+      if (typeof guestTime !== 'number') return
+      const drift = Math.abs(guestTime - (room.currentTime || 0))
+      if (drift > 2.5) {
+        p.seekTo(room.currentTime, true)
+      }
+    } catch {}
+  }, [room?.currentTime])
+
+  // ─── Host: push timestamp every 2s ───
   useEffect(() => {
     if (!isHost || !room?.isPlaying) return
     const iv = setInterval(() => {
@@ -1004,7 +1022,7 @@ export default function RoomPage() {
         const t = ytPlayerRef.current?.getCurrentTime?.()
         if (typeof t === 'number' && isFinite(t)) updatePlayback(roomId, { currentTime: t })
       } catch {}
-    }, 5000)
+    }, 2000)
     return () => clearInterval(iv)
   }, [isHost, room?.isPlaying, roomId])
 
