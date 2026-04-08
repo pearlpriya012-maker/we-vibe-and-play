@@ -868,6 +868,7 @@ export default function RoomPage() {
   const lastUpdateRef = useRef(0)  // Track recent updates to prevent sync loops
   const prevTrackRef = useRef(null)
   const mobileSkipTimerRef = useRef(null)  // Detects "can't play on mobile browser" stuck state
+  const pauseDebounceRef = useRef(null)     // Debounces PAUSED writes to avoid backgrounding false-positives
   const [ytToken, setYtToken] = useState(user?.youtubeAccessToken || null)
 
   const isHost = room?.hostId === user?.uid
@@ -968,7 +969,7 @@ export default function RoomPage() {
         if (typeof dur === 'number' && isFinite(dur) && dur > 0) setDuration(dur)
       } catch {}
     }, 500)
-    return () => { clearInterval(tickRef.current); clearTimeout(mobileSkipTimerRef.current) }
+    return () => { clearInterval(tickRef.current); clearTimeout(mobileSkipTimerRef.current); clearTimeout(pauseDebounceRef.current) }
   }, [])
 
   // ─── Visibility change: resume local player when user returns to app ───
@@ -1175,12 +1176,22 @@ export default function RoomPage() {
       clearTimeout(mobileSkipTimerRef.current)
     }
     if (!canControl || seekLock.current) return
-    lastUpdateRef.current = Date.now()  // Mark that we're making a change
+    lastUpdateRef.current = Date.now()
     if (!YT) return
-    if (e.data === YT.PLAYING) await updatePlayback(roomId, { isPlaying: true, currentTime: e.target.getCurrentTime() })
-    // Ignore PAUSED when page is hidden — browser backgrounding causes spurious pause events
-    // that would stop playback for the entire room
-    else if (e.data === YT.PAUSED && !document.hidden) await updatePlayback(roomId, { isPlaying: false, currentTime: e.target.getCurrentTime() })
+    if (e.data === YT.PLAYING) {
+      // Cancel any pending pause write — user resumed
+      clearTimeout(pauseDebounceRef.current)
+      await updatePlayback(roomId, { isPlaying: true, currentTime: e.target.getCurrentTime() })
+    } else if (e.data === YT.PAUSED) {
+      // Debounce the pause write by 400ms — if the page goes hidden within that window
+      // (app backgrounded) we cancel it so the room keeps playing for everyone
+      const pauseTime = e.target.getCurrentTime()
+      clearTimeout(pauseDebounceRef.current)
+      pauseDebounceRef.current = setTimeout(async () => {
+        if (document.hidden) return  // App was backgrounded — ignore
+        await updatePlayback(roomId, { isPlaying: false, currentTime: pauseTime })
+      }, 400)
+    }
     // Only host skips on ENDED — prevents all participants calling skipToNext simultaneously
     else if (e.data === YT.ENDED && isHost) await skipToNext(roomId)
   }
