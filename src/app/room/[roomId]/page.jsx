@@ -1144,26 +1144,20 @@ export default function RoomPage() {
   function handlePlayerReady(e) {
     try {
       ytPlayerRef.current = e.target
-      if (!room?.currentTrack?.videoId) return
-      // Always unmute immediately — mute:1 in playerVars enables mobile autoplay
-      // but we restore volume right away so the user hears audio
+      // Always use roomRef.current — the closure captures a stale `room` at mount time
+      const liveRoom = roomRef.current
+      if (!liveRoom?.currentTrack?.videoId) return
       e.target.unMute()
       e.target.setVolume(volume)
-      if (room.isPlaying) e.target.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
-      else e.target.cueVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
-      // Mobile: if the video is supposed to play but stays UNSTARTED after 7s,
-      // it's showing "This content can't be played on mobile browser" inside the iframe.
-      // That message never fires onError, so we detect it via timeout.
-      // Run on ALL mobile users (not just host) — host will receive the skip request
-      // via Firestore even if it comes from a participant.
-      if (room.isPlaying && isMobile) {
+      if (liveRoom.isPlaying) e.target.loadVideoById({ videoId: liveRoom.currentTrack.videoId, startSeconds: liveRoom.currentTime || 0 })
+      else e.target.cueVideoById({ videoId: liveRoom.currentTrack.videoId, startSeconds: liveRoom.currentTime || 0 })
+      if (liveRoom.isPlaying && isMobile) {
         clearTimeout(mobileSkipTimerRef.current)
         mobileSkipTimerRef.current = setTimeout(async () => {
           const state = ytPlayerRef.current?.getPlayerState?.()
-          // -1 = UNSTARTED = video can't play (mobile restriction showing error overlay)
           if (state === -1) {
-            if (isHost) await skipToNext(roomId)
-            // Non-host: notify host via Firestore flag, host will skip
+            const liveIsHost = roomRef.current?.hostId === user?.uid
+            if (liveIsHost) await skipToNext(roomId)
             else {
               const { updateDoc, doc } = await import('firebase/firestore')
               const { db } = await import('@/lib/firebase')
@@ -1182,38 +1176,49 @@ export default function RoomPage() {
       // Always unmute when playback starts — iOS remutes on every new video load
       try { e.target.unMute?.(); e.target.setVolume?.(volume) } catch {}
     }
-    // Non-host canControl users must NOT write playback state — only the host does.
-    // If a participant's local player fires PLAYING at t=0.5 while host is at t=45,
-    // their write would snap everyone's timestamp back. Host is the single source of truth.
-    if (!isHost || seekLock.current) return
+    // Use roomRef for a live isHost check — the closed-over `isHost` can be stale
+    // if the YouTube event handler hasn't been re-registered since the last render.
+    const liveIsHost = roomRef.current?.hostId === user?.uid
     if (!YT) return
-    lastUpdateRef.current = Date.now()
-    if (e.data === YT.PLAYING) {
-      // Cancel any pending pause write — user resumed
-      clearTimeout(pauseDebounceRef.current)
-      await updatePlayback(roomId, { isPlaying: true, currentTime: e.target.getCurrentTime() })
-    } else if (e.data === YT.PAUSED) {
-      // Debounce the pause write by 400ms — if the page goes hidden within that window
-      // (app backgrounded) we cancel it so the room keeps playing for everyone
-      const pauseTime = e.target.getCurrentTime()
-      clearTimeout(pauseDebounceRef.current)
-      pauseDebounceRef.current = setTimeout(async () => {
-        if (document.hidden) return  // App was backgrounded — ignore
-        await updatePlayback(roomId, { isPlaying: false, currentTime: pauseTime })
-      }, 400)
+    if (liveIsHost && !seekLock.current) {
+      lastUpdateRef.current = Date.now()
+      if (e.data === YT.PLAYING) {
+        clearTimeout(pauseDebounceRef.current)
+        await updatePlayback(roomId, { isPlaying: true, currentTime: e.target.getCurrentTime() })
+      } else if (e.data === YT.PAUSED) {
+        const pauseTime = e.target.getCurrentTime()
+        clearTimeout(pauseDebounceRef.current)
+        pauseDebounceRef.current = setTimeout(async () => {
+          if (document.hidden) return
+          await updatePlayback(roomId, { isPlaying: false, currentTime: pauseTime })
+        }, 400)
+      } else if (e.data === YT.ENDED) {
+        await skipToNext(roomId)
+      }
+    } else if (!liveIsHost && e.data === YT.ENDED) {
+      // Fallback: participant's player fired ENDED — signal host to skip in case
+      // host's player missed the event (background, network, mobile throttle)
+      try {
+        const { updateDoc, doc } = await import('firebase/firestore')
+        const { db } = await import('@/lib/firebase')
+        await updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() })
+      } catch {}
     }
-    // Only host skips on ENDED — prevents all participants calling skipToNext simultaneously
-    else if (e.data === YT.ENDED) await skipToNext(roomId)
   }
 
   async function handlePlayerError(e) {
-    // Only host handles errors to avoid all participants race-skipping
-    if (!isHost) return
-    // code 5 = "cannot be played in HTML5 player" = "can't be played on mobile browser"
-    // code 2 = invalid id, 100 = not found, 101/150 = embedding blocked
-    // All of these are unplayable — skip to next
     clearTimeout(mobileSkipTimerRef.current)
-    await skipToNext(roomId)
+    const liveIsHost = roomRef.current?.hostId === user?.uid
+    if (liveIsHost) {
+      await skipToNext(roomId)
+    } else {
+      // Non-host: signal host to skip the unplayable video
+      try {
+        const { updateDoc, doc } = await import('firebase/firestore')
+        const { db } = await import('@/lib/firebase')
+        await updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() })
+      } catch {}
+    }
   }
 
   async function handlePlayPause() {
