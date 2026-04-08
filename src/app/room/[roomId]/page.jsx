@@ -971,6 +971,26 @@ export default function RoomPage() {
     return () => { clearInterval(tickRef.current); clearTimeout(mobileSkipTimerRef.current) }
   }, [])
 
+  // ─── Visibility change: resume local player when user returns to app ───
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.hidden) return
+      // User came back — if Firestore says playing, resume local player
+      try {
+        const p = ytPlayerRef.current
+        if (!p || !room?.isPlaying) return
+        const state = p.getPlayerState?.()
+        if (state !== 1) {
+          p.unMute?.()
+          p.setVolume?.(volume)
+          p.playVideo?.()
+        }
+      } catch {}
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [room?.isPlaying, volume])
+
   // ─── Floating new message bubble on mobile ───
   useEffect(() => {
     if (!isMobile || !messages.length) return
@@ -1158,7 +1178,9 @@ export default function RoomPage() {
     lastUpdateRef.current = Date.now()  // Mark that we're making a change
     if (!YT) return
     if (e.data === YT.PLAYING) await updatePlayback(roomId, { isPlaying: true, currentTime: e.target.getCurrentTime() })
-    else if (e.data === YT.PAUSED) await updatePlayback(roomId, { isPlaying: false, currentTime: e.target.getCurrentTime() })
+    // Ignore PAUSED when page is hidden — browser backgrounding causes spurious pause events
+    // that would stop playback for the entire room
+    else if (e.data === YT.PAUSED && !document.hidden) await updatePlayback(roomId, { isPlaying: false, currentTime: e.target.getCurrentTime() })
     // Only host skips on ENDED — prevents all participants calling skipToNext simultaneously
     else if (e.data === YT.ENDED && isHost) await skipToNext(roomId)
   }
