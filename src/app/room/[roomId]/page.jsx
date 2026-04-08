@@ -1182,9 +1182,12 @@ export default function RoomPage() {
       // Always unmute when playback starts — iOS remutes on every new video load
       try { e.target.unMute?.(); e.target.setVolume?.(volume) } catch {}
     }
-    if (!canControl || seekLock.current) return
-    lastUpdateRef.current = Date.now()
+    // Non-host canControl users must NOT write playback state — only the host does.
+    // If a participant's local player fires PLAYING at t=0.5 while host is at t=45,
+    // their write would snap everyone's timestamp back. Host is the single source of truth.
+    if (!isHost || seekLock.current) return
     if (!YT) return
+    lastUpdateRef.current = Date.now()
     if (e.data === YT.PLAYING) {
       // Cancel any pending pause write — user resumed
       clearTimeout(pauseDebounceRef.current)
@@ -1200,7 +1203,7 @@ export default function RoomPage() {
       }, 400)
     }
     // Only host skips on ENDED — prevents all participants calling skipToNext simultaneously
-    else if (e.data === YT.ENDED && isHost) await skipToNext(roomId)
+    else if (e.data === YT.ENDED) await skipToNext(roomId)
   }
 
   async function handlePlayerError(e) {
@@ -1218,6 +1221,8 @@ export default function RoomPage() {
     lastUpdateRef.current = Date.now()
     const p = ytPlayerRef.current
     if (!p) return
+    // Cancel any pending debounced pause write before issuing a real one
+    clearTimeout(pauseDebounceRef.current)
     if (room.isPlaying) {
       p.pauseVideo()
       await updatePlayback(roomId, { isPlaying: false, currentTime: p.getCurrentTime() })
