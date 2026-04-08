@@ -976,12 +976,14 @@ export default function RoomPage() {
   useEffect(() => {
     function handleVisibilityChange() {
       if (document.hidden) return
-      // User came back — if Firestore says playing, resume local player
+      // User came back — if Firestore says playing, seek to current position and resume
       try {
         const p = ytPlayerRef.current
         if (!p || !room?.isPlaying) return
         const state = p.getPlayerState?.()
         if (state !== 1) {
+          // Seek to the Firestore timestamp so we're in sync, not behind
+          if (room.currentTime) p.seekTo?.(room.currentTime, true)
           p.unMute?.()
           p.setVolume?.(volume)
           p.playVideo?.()
@@ -1047,18 +1049,21 @@ export default function RoomPage() {
   // ─── Non-host sync — audio always unlocked here (past entry gate) ───
   useEffect(() => {
     if (!room || isHost) return
-    const now = Date.now()
-    if (now - lastUpdateRef.current < 1000) return
     try {
       const p = ytPlayerRef.current
       if (!p) return
       const vid = p.getVideoData?.()?.video_id
       if (room.currentTrack?.videoId && vid !== room.currentTrack.videoId) {
+        // Track changed — always sync, never blocked by the 1-second guard.
+        // The guard was causing canControl participants to miss new tracks when
+        // ENDED set lastUpdateRef just before the new track arrived in Firestore.
         p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
-        // Re-unmute after loading — mobile may re-mute on new video load
         p.unMute?.(); p.setVolume?.(volume)
         return
       }
+      // Play/pause state change — only apply if we didn't trigger it ourselves
+      const now = Date.now()
+      if (now - lastUpdateRef.current < 1000) return
       const state = p.getPlayerState?.()
       if (room.isPlaying && state !== 1) p.playVideo?.()
       else if (!room.isPlaying && state !== 2) p.pauseVideo?.()
@@ -1170,10 +1175,11 @@ export default function RoomPage() {
   }
 
   async function handleStateChange(e) {
-    // Clear the mobile stuck-video timer as soon as the player actually starts
     const YT = window.YT?.PlayerState
     if (YT && (e.data === YT.PLAYING || e.data === YT.BUFFERING)) {
       clearTimeout(mobileSkipTimerRef.current)
+      // Always unmute when playback starts — iOS remutes on every new video load
+      try { e.target.unMute?.(); e.target.setVolume?.(volume) } catch {}
     }
     if (!canControl || seekLock.current) return
     lastUpdateRef.current = Date.now()
