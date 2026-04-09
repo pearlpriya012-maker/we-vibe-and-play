@@ -1043,7 +1043,7 @@ export default function RoomPage() {
             await updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() })
           }
         }
-      }, 7000)
+      }, 3000)
     }
   }, [room?.currentTrack?.videoId])
 
@@ -1164,7 +1164,7 @@ export default function RoomPage() {
               await updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() })
             }
           }
-        }, 7000)
+        }, 3000)
       }
     } catch {}
   }
