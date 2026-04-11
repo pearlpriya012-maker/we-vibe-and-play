@@ -1096,6 +1096,22 @@ export default function RoomPage() {
     return () => clearInterval(watchTimerRef.current)
   }, [room?.watchIsPlaying, room?.watchUpdatedAt, room?.watchUrl])
 
+  // ─── Receive real currentTime from YouTube iframe via infoDelivery ───
+  useEffect(() => {
+    if (!room?.watchUrl) return
+    function onMsg(e) {
+      if (!e.data) return
+      let d
+      try { d = JSON.parse(e.data) } catch { return }
+      if (d.event === 'infoDelivery' && d.info?.currentTime != null) {
+        watchTimeRef.current = d.info.currentTime
+        setWatchTime(Math.floor(d.info.currentTime))
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [room?.watchUrl])
+
   // ─── Broadcast this user's watch time every 5s ───
   useEffect(() => {
     if (!room?.watchUrl || !user?.uid) return
@@ -1808,6 +1824,7 @@ export default function RoomPage() {
             src={room.watchUrl}
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
+            onLoad={() => watchIframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1 }), '*')}
             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
             title="Watch together"
           />
@@ -2068,6 +2085,7 @@ export default function RoomPage() {
                 src={room.watchUrl}
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowFullScreen
+                onLoad={() => watchIframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1 }), '*')}
                 style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                 title="Watch together"
               />
