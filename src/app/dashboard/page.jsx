@@ -37,7 +37,7 @@ export default function DashboardPage() {
     const ytMatch = s.match(
       /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
     )
-    if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0`
+    if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0&enablejsapi=1`
     // Already a direct https URL — pass through (e.g. Twitch, Vimeo embed links)
     if (/^https?:\/\//i.test(s)) return s
     return null

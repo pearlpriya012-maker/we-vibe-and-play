@@ -10,7 +10,7 @@ import {
   updatePlayback, addToQueue, addManyToQueue, removeFromQueue, reorderQueue,
   setCurrentTrack, skipToNext, leaveRoom,
   sendMessage, addReaction, toggleParticipantQueueAccess, toggleParticipantFullControl,
-  kickParticipant, updateMusicMode,
+  kickParticipant, updateMusicMode, updateWatchPlayback,
 } from '@/lib/rooms'
 
 function Avatar({ user, size = 32 }) {
@@ -897,6 +897,12 @@ export default function RoomPage() {
   const playlistTriedRef = useRef(null)     // videoId of last track we tried loadPlaylist for (prevents infinite loop)
   const keepAliveCtxRef = useRef(null)      // Web Audio context — keeps tab classified as active audio in background
   const keepAliveAudioRef = useRef(null)    // <audio> element driven by the keepalive stream
+  // Watch URL room sync
+  const watchIframeRef = useRef(null)       // ref to watch URL <iframe>
+  const watchTimeRef = useRef(0)            // locally tracked playback time (seconds)
+  const watchTimerRef = useRef(null)        // interval that increments watchTimeRef when playing
+  const prevWatchUpdatedAt = useRef(null)   // tracks last Firestore update to avoid duplicate seeks
+  const [watchTime, setWatchTime] = useState(0) // drives the seek bar UI
   const [ytToken, setYtToken] = useState(user?.youtubeAccessToken || null)
 
   const isHost = room?.hostId === user?.uid
@@ -1041,6 +1047,47 @@ export default function RoomPage() {
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [volume])
+
+  // ─── Watch URL room: postMessage helper + Firestore sync ───
+  function ytCmd(func, args = []) {
+    watchIframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: 'command', func, args }), '*'
+    )
+  }
+
+  // Sync all participants to host's play/pause/seek via Firestore
+  useEffect(() => {
+    if (!room?.watchUrl) return
+    const isNewUpdate = room.watchUpdatedAt && room.watchUpdatedAt !== prevWatchUpdatedAt.current
+    prevWatchUpdatedAt.current = room.watchUpdatedAt
+
+    if (room.watchIsPlaying) {
+      if (isNewUpdate) {
+        // Account for time elapsed since host wrote the update
+        const elapsed = (Date.now() - room.watchUpdatedAt) / 1000
+        const seekTo = Math.max(0, (room.watchCurrentTime || 0) + elapsed)
+        ytCmd('seekTo', [seekTo, true])
+        watchTimeRef.current = seekTo
+        setWatchTime(Math.floor(seekTo))
+      }
+      ytCmd('playVideo')
+      clearInterval(watchTimerRef.current)
+      watchTimerRef.current = setInterval(() => {
+        watchTimeRef.current += 0.25
+        setWatchTime(Math.floor(watchTimeRef.current))
+      }, 250)
+    } else {
+      ytCmd('pauseVideo')
+      clearInterval(watchTimerRef.current)
+      if (isNewUpdate) {
+        const t = room.watchCurrentTime || 0
+        ytCmd('seekTo', [t, true])
+        watchTimeRef.current = t
+        setWatchTime(Math.floor(t))
+      }
+    }
+    return () => clearInterval(watchTimerRef.current)
+  }, [room?.watchIsPlaying, room?.watchUpdatedAt, room?.watchUrl])
 
   // ─── MediaSession API: lock-screen / notification controls (iOS 14.5+, Android Chrome) ───
   useEffect(() => {
@@ -1693,6 +1740,8 @@ export default function RoomPage() {
   //  WATCH URL ROOM — MOBILE
   // ══════════════════════════════════════════
   if (room.watchUrl && isMobile) {
+    const isYt = /youtube\.com\/embed/.test(room.watchUrl)
+    const fmtTime = s => { const m = Math.floor(s/60); const sec = Math.floor(s%60); return `${m}:${sec.toString().padStart(2,'0')}` }
     return (
       <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#000', position: 'relative' }}>
         {/* Header */}
@@ -1716,6 +1765,7 @@ export default function RoomPage() {
         {/* Video */}
         <div style={{ flexShrink: 0, width: '100%', paddingTop: '56.25%', position: 'relative', background: '#000' }}>
           <iframe
+            ref={watchIframeRef}
             src={room.watchUrl}
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
@@ -1723,6 +1773,37 @@ export default function RoomPage() {
             title="Watch together"
           />
         </div>
+
+        {/* Sync Controls */}
+        {isYt && (
+          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: 'rgba(13,13,13,0.95)', borderBottom: '1px solid rgba(0,200,255,0.15)' }}>
+            {canControl ? (
+              <>
+                <button
+                  onClick={() => {
+                    const nowPlaying = !room.watchIsPlaying
+                    ytCmd(nowPlaying ? 'playVideo' : 'pauseVideo')
+                    updateWatchPlayback(roomId, { watchIsPlaying: nowPlaying, watchCurrentTime: watchTimeRef.current, watchUpdatedAt: Date.now() })
+                  }}
+                  style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--cyan)', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 14px rgba(0,200,255,0.4)' }}
+                >{room.watchIsPlaying ? '⏸' : '▶'}</button>
+                <span style={{ fontFamily: 'Oswald', fontSize: '0.72rem', color: 'var(--cyan)', flexShrink: 0, minWidth: 36 }}>{fmtTime(watchTime)}</span>
+                <input type="range" min="0" max="7200" value={watchTime}
+                  onChange={e => { watchTimeRef.current = +e.target.value; setWatchTime(+e.target.value) }}
+                  onMouseUp={e => { ytCmd('seekTo', [+e.target.value, true]); updateWatchPlayback(roomId, { watchCurrentTime: +e.target.value, watchUpdatedAt: Date.now() }) }}
+                  onTouchEnd={e => { ytCmd('seekTo', [+e.target.value, true]); updateWatchPlayback(roomId, { watchCurrentTime: +e.target.value, watchUpdatedAt: Date.now() }) }}
+                  style={{ flex: 1, accentColor: 'var(--cyan)', cursor: 'pointer' }}
+                />
+              </>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                <span style={{ fontSize: '0.9rem' }}>{room.watchIsPlaying ? '▶' : '⏸'}</span>
+                <span style={{ fontFamily: 'Oswald', fontSize: '0.68rem', color: 'var(--text-dim)' }}>{room.watchIsPlaying ? 'Playing' : 'Paused by host'} · {fmtTime(watchTime)}</span>
+                <span style={{ marginLeft: 'auto', fontFamily: 'Oswald', fontSize: '0.6rem', color: 'var(--cyan)', background: 'rgba(0,200,255,0.08)', border: '1px solid rgba(0,200,255,0.25)', borderRadius: 6, padding: '2px 6px' }}>SYNCED</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabs: Chat | People */}
         <div style={{ flexShrink: 0, display: 'flex', background: 'rgba(13,13,13,0.95)', borderBottom: '1px solid var(--border)' }}>
@@ -1886,6 +1967,8 @@ export default function RoomPage() {
   //  WATCH URL ROOM — DESKTOP
   // ══════════════════════════════════════════
   if (room.watchUrl) {
+    const isYt = /youtube\.com\/embed/.test(room.watchUrl)
+    const fmtTime = s => { const m = Math.floor(s/60); const sec = Math.floor(s%60); return `${m}:${sec.toString().padStart(2,'0')}` }
     return (
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#000', position: 'relative' }}>
         <div className="grid-bg" style={{ opacity: 0.3 }} />
@@ -1913,12 +1996,13 @@ export default function RoomPage() {
           </div>
         </header>
 
-        {/* Body: video + chat */}
+        {/* Body: video+controls column + chat sidebar */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-          {/* Video */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', overflow: 'hidden', padding: '12px 0 12px 12px' }}>
-            <div style={{ width: '100%', height: '100%', maxWidth: 'calc((100% - 320px) * 1)', position: 'relative', borderRadius: 8, overflow: 'hidden' }}>
+          {/* Video + Controls */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#000' }}>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
               <iframe
+                ref={watchIframeRef}
                 src={room.watchUrl}
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowFullScreen
@@ -1926,6 +2010,38 @@ export default function RoomPage() {
                 title="Watch together"
               />
             </div>
+            {/* Sync controls */}
+            {isYt && (
+              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 20px', background: 'rgba(13,13,13,0.97)', borderTop: '1px solid rgba(0,200,255,0.15)' }}>
+                {canControl ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        const nowPlaying = !room.watchIsPlaying
+                        ytCmd(nowPlaying ? 'playVideo' : 'pauseVideo')
+                        updateWatchPlayback(roomId, { watchIsPlaying: nowPlaying, watchCurrentTime: watchTimeRef.current, watchUpdatedAt: Date.now() })
+                      }}
+                      style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--cyan)', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 16px rgba(0,200,255,0.4)', transition: 'transform 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >{room.watchIsPlaying ? '⏸' : '▶'}</button>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', color: 'var(--cyan)', flexShrink: 0, minWidth: 42 }}>{fmtTime(watchTime)}</span>
+                    <input type="range" min="0" max="7200" value={watchTime}
+                      onChange={e => { watchTimeRef.current = +e.target.value; setWatchTime(+e.target.value) }}
+                      onMouseUp={e => { ytCmd('seekTo', [+e.target.value, true]); updateWatchPlayback(roomId, { watchCurrentTime: +e.target.value, watchUpdatedAt: Date.now() }) }}
+                      style={{ flex: 1, accentColor: 'var(--cyan)', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.65rem', color: 'var(--text-dim)', flexShrink: 0 }}>{isHost ? '⭐ HOST CONTROLS' : '🛡️ IN SYNC'}</span>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+                    <span style={{ fontSize: '1.1rem' }}>{room.watchIsPlaying ? '▶️' : '⏸️'}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.75rem', color: 'var(--text-dim)' }}>{room.watchIsPlaying ? 'Playing' : 'Paused by host'} · {fmtTime(watchTime)}</span>
+                    <span style={{ marginLeft: 'auto', fontFamily: 'Oswald', fontSize: '0.65rem', color: 'var(--cyan)', background: 'rgba(0,200,255,0.08)', border: '1px solid rgba(0,200,255,0.25)', borderRadius: 6, padding: '3px 8px' }}>🛡️ SYNCED WITH HOST</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Chat + People sidebar */}

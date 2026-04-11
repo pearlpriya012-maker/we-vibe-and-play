@@ -48,7 +48,7 @@ export async function createRoom({ hostId, hostName, hostPhoto, mode, watchUrl }
     id: roomRef.id,
     roomCode,
     hostId,
-    ...(watchUrl ? { watchUrl } : {}),
+    ...(watchUrl ? { watchUrl, watchIsPlaying: false, watchCurrentTime: 0, watchUpdatedAt: null } : {}),
     participants: [
       {
         uid: hostId,
@@ -72,6 +72,12 @@ export async function createRoom({ hostId, hostName, hostPhoto, mode, watchUrl }
   }
   await setDoc(roomRef, roomData)
   return { id: roomRef.id, roomCode }
+}
+
+// ─── Update watch URL room playback state ───
+export async function updateWatchPlayback(roomId, data) {
+  const { updateDoc, doc: firestoreDoc } = await import('firebase/firestore')
+  await updateDoc(firestoreDoc(db, 'rooms', roomId), data)
 }
 
 // ─── Join a room by code ───
