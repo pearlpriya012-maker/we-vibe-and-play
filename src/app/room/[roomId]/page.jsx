@@ -1885,7 +1885,14 @@ export default function RoomPage() {
 
         {/* Center */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: videoFocus ? '12px 20px' : '20px 24px', gap: videoFocus ? 10 : 16, background: 'rgba(10,10,10,0.4)', overflow: 'hidden', minWidth: 0 }}>
-          {room.currentTrack ? (
+          {room.watchUrl ? (
+            <div style={{ width: '100%', maxWidth: 800, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {watchUrlEl}
+              <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                📺 Watch together · everyone sees the same video
+              </div>
+            </div>
+          ) : room.currentTrack ? (
             <>
               {musicMode && <MusicVisualizer track={room.currentTrack} isPlaying={room.isPlaying} />}
               {!musicMode && (
