@@ -30,7 +30,7 @@ export default function DashboardPage() {
   const [watchUrl, setWatchUrl] = useState('')
   const [watchUrlError, setWatchUrlError] = useState('')
 
-  // Extract a clean embed URL from a YouTube or arbitrary URL
+  // Extract a clean embed URL from a YouTube, Dailymotion, Vimeo, or arbitrary URL
   function toEmbedUrl(raw) {
     const s = raw.trim()
     // youtube.com/watch?v=ID  or  youtu.be/ID  or  youtube.com/shorts/ID
@@ -38,7 +38,13 @@ export default function DashboardPage() {
       /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
     )
     if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0&enablejsapi=1`
-    // Already a direct https URL — pass through (e.g. Twitch, Vimeo embed links)
+    // dailymotion.com/video/ID
+    const dmMatch = s.match(/dailymotion\.com\/(?:video|embed\/video)\/([A-Za-z0-9]+)/)
+    if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}?autoplay=1`
+    // vimeo.com/ID
+    const vimeoMatch = s.match(/vimeo\.com\/(\d+)/)
+    if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`
+    // Already a direct https URL — pass through
     if (/^https?:\/\//i.test(s)) return s
     return null
   }

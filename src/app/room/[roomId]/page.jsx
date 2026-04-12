@@ -1808,7 +1808,12 @@ export default function RoomPage() {
             const s = watchUrlInput.trim()
             if (!s) return
             const ytMatch = s.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/)
-            const url = ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0&enablejsapi=1` : (/^https?:\/\//i.test(s) ? s : null)
+            const dmMatch = s.match(/dailymotion\.com\/(?:video|embed\/video)\/([A-Za-z0-9]+)/)
+            const vimeoMatch = s.match(/vimeo\.com\/(\d+)/)
+            const url = ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0&enablejsapi=1`
+              : dmMatch ? `https://www.dailymotion.com/embed/video/${dmMatch[1]}?autoplay=1`
+              : vimeoMatch ? `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`
+              : (/^https?:\/\//i.test(s) ? s : null)
             if (!url) { toast.error('Invalid URL'); return }
             updateWatchPlayback(roomId, { watchUrl: url, watchIsPlaying: false, watchCurrentTime: 0, watchUpdatedAt: Date.now() })
             setWatchUrlInput('')
@@ -2075,7 +2080,12 @@ export default function RoomPage() {
             const s = watchUrlInput.trim()
             if (!s) return
             const ytMatch = s.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/)
-            const url = ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0&enablejsapi=1` : (/^https?:\/\//i.test(s) ? s : null)
+            const dmMatch = s.match(/dailymotion\.com\/(?:video|embed\/video)\/([A-Za-z0-9]+)/)
+            const vimeoMatch = s.match(/vimeo\.com\/(\d+)/)
+            const url = ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0&enablejsapi=1`
+              : dmMatch ? `https://www.dailymotion.com/embed/video/${dmMatch[1]}?autoplay=1`
+              : vimeoMatch ? `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`
+              : (/^https?:\/\//i.test(s) ? s : null)
             if (!url) { toast.error('Invalid URL'); return }
             updateWatchPlayback(roomId, { watchUrl: url, watchIsPlaying: false, watchCurrentTime: 0, watchUpdatedAt: Date.now() })
             setWatchUrlInput('')
