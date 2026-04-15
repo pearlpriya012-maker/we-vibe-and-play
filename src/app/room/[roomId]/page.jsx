@@ -904,6 +904,8 @@ export default function RoomPage() {
   const keepAliveCtxRef = useRef(null)      // Web Audio context — keeps tab classified as active audio in background
   const keepAliveAudioRef = useRef(null)    // <audio> element driven by the keepalive stream
   const bgWatchdogRef = useRef(null)        // interval that fights YouTube auto-pause while tab is hidden
+  const pipWindowRef = useRef(null)         // Document Picture-in-Picture floating mini-player window
+  const pipSyncRef = useRef(null)           // interval that keeps pip DOM in sync with player state
   // Watch URL room sync
   const watchIframeRef = useRef(null)       // ref to watch URL <iframe> (non-YT only)
   const watchYtPlayerRef = useRef(null)     // real YT.Player for watch room YouTube videos
@@ -1375,6 +1377,127 @@ export default function RoomPage() {
     } catch {}
   }
 
+  // ─── Document Picture-in-Picture mini-player ───
+  // Opens a floating always-on-top popup with track info + controls.
+  // Works even when the main browser window is minimised.
+  async function openMiniPlayer() {
+    // Close existing pip window if open
+    if (pipWindowRef.current && !pipWindowRef.current.closed) {
+      pipWindowRef.current.close()
+      return
+    }
+    if (!('documentPictureInPicture' in window)) {
+      toast.error('Mini-player not supported in this browser (Chrome 116+ required)')
+      return
+    }
+    try {
+      const pipWin = await window.documentPictureInPicture.requestWindow({ width: 340, height: 180, preferInitialWindowPlacement: true })
+      pipWindowRef.current = pipWin
+
+      // ── Inject styles ──
+      const style = pipWin.document.createElement('style')
+      style.textContent = `
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+        body { background: #0d0d0d; color: #fff; height: 100vh; display: flex; flex-direction: column; justify-content: center; user-select: none; overflow: hidden; }
+        #pip { display: flex; align-items: center; gap: 12px; padding: 14px; }
+        #thumb { width: 54px; height: 54px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+        #thumb-placeholder { width: 54px; height: 54px; border-radius: 8px; background: #1a1a1a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+        #info { flex: 1; overflow: hidden; }
+        #title { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #artist { font-size: 0.7rem; color: #888; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #controls { display: flex; align-items: center; gap: 8px; margin-top: 0; flex-shrink: 0; }
+        button { background: none; border: none; cursor: pointer; color: #fff; font-size: 1.1rem; padding: 4px; border-radius: 50%; transition: color 0.15s; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; }
+        #play-btn { background: #00ff88; color: #000; width: 42px; height: 42px; font-size: 1.2rem; }
+        button:hover { opacity: 0.75; }
+        #progress-wrap { padding: 0 14px 12px; }
+        #progress-bar { width: 100%; height: 3px; background: rgba(255,255,255,0.12); border-radius: 2px; position: relative; }
+        #progress-fill { height: 100%; background: linear-gradient(90deg,#00ff88,#00e5ff); border-radius: 2px; transition: width 0.5s linear; }
+        #times { display: flex; justify-content: space-between; font-size: 0.62rem; color: #555; margin-top: 5px; }
+        #status { font-size: 0.6rem; color: #444; text-align: center; padding-bottom: 6px; letter-spacing: 0.06em; text-transform: uppercase; }
+      `
+      pipWin.document.head.appendChild(style)
+
+      // ── Build HTML ──
+      pipWin.document.body.innerHTML = `
+        <div id="pip">
+          <div id="thumb-placeholder">🎵</div>
+          <div id="info"><div id="title">Loading…</div><div id="artist"></div></div>
+          <div id="controls">
+            <button id="prev-btn" title="Previous">⏮</button>
+            <button id="play-btn" title="Play / Pause">▶</button>
+            <button id="next-btn" title="Next">⏭</button>
+          </div>
+        </div>
+        <div id="progress-wrap">
+          <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+          <div id="times"><span id="t-cur">0:00</span><span id="t-dur">0:00</span></div>
+        </div>
+        <div id="status">We Vibe • mini player</div>
+      `
+
+      // ── Wire up buttons (handlers run in opener's JS context) ──
+      pipWin.document.getElementById('play-btn').onclick = () => handlePlayPause()
+      pipWin.document.getElementById('next-btn').onclick = () => skipToNext(roomId)
+      pipWin.document.getElementById('prev-btn').onclick = () => handlePreviousTrack()
+
+      function fmt(s) {
+        if (!s || !isFinite(s)) return '0:00'
+        const m = Math.floor(s / 60)
+        return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+      }
+
+      // ── Sync loop — updates pip DOM 2× per second ──
+      clearInterval(pipSyncRef.current)
+      pipSyncRef.current = setInterval(() => {
+        if (!pipWindowRef.current || pipWindowRef.current.closed) { clearInterval(pipSyncRef.current); return }
+        const liveRoom = roomRef.current
+        const track = liveRoom?.currentTrack
+        const d = pipWin.document
+        try {
+          // Thumbnail
+          const existing = d.getElementById('thumb')
+          if (track?.thumbnail) {
+            if (!existing) {
+              const img = pipWin.document.createElement('img')
+              img.id = 'thumb'
+              img.alt = ''
+              img.src = track.thumbnail
+              d.getElementById('thumb-placeholder')?.replaceWith(img)
+            } else if (existing.src !== track.thumbnail) {
+              existing.src = track.thumbnail
+            }
+          }
+          // Title / artist
+          d.getElementById('title').textContent = track?.title || 'Nothing playing'
+          d.getElementById('artist').textContent = track?.channelTitle || ''
+          // Play/pause icon
+          d.getElementById('play-btn').textContent = liveRoom?.isPlaying ? '⏸' : '▶'
+          // Previous button visibility
+          d.getElementById('prev-btn').style.opacity = canFullControl ? '1' : '0.2'
+          d.getElementById('prev-btn').style.pointerEvents = canFullControl ? 'auto' : 'none'
+          // Progress bar
+          const p = ytPlayerRef.current
+          const ct = (typeof p?.getCurrentTime === 'function' ? p.getCurrentTime() : null) ?? 0
+          const dur = (typeof p?.getDuration === 'function' ? p.getDuration() : null) ?? 0
+          const pct = dur > 0 ? Math.min(100, (ct / dur) * 100) : 0
+          d.getElementById('progress-fill').style.width = `${pct}%`
+          d.getElementById('t-cur').textContent = fmt(ct)
+          d.getElementById('t-dur').textContent = fmt(dur)
+        } catch {}
+      }, 500)
+
+      // Clean up when pip window is closed
+      pipWin.addEventListener('pagehide', () => {
+        clearInterval(pipSyncRef.current)
+        pipWindowRef.current = null
+      })
+
+      toast.success('Mini player opened — you can minimise this tab now')
+    } catch (err) {
+      toast.error('Could not open mini player')
+    }
+  }
+
   function handlePlayerReady(e) {
     initAudioKeepAlive()
     try {
@@ -1780,11 +1903,13 @@ export default function RoomPage() {
               <button onClick={handlePlayPause} style={{ width: compact ? 46 : 52, height: compact ? 46 : 52, borderRadius: '50%', background: 'var(--green)', border: 'none', cursor: 'pointer', fontSize: compact ? '1rem' : '1.2rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(0,255,136,0.4)', transition: 'transform 0.15s' }}>{room.isPlaying ? '⏸' : '▶'}</button>
               <button onClick={() => skipToNext(roomId)} style={{ width: compact ? 36 : 40, height: compact ? 36 : 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⏭</button>
               {volumeWidget}
+              <button onClick={openMiniPlayer} title="Pop out mini player" style={{ width: compact ? 36 : 40, height: compact ? 36 : 40, borderRadius: '50%', background: pipWindowRef.current && !pipWindowRef.current?.closed ? 'rgba(0,255,136,0.15)' : 'var(--glass)', border: `1px solid ${pipWindowRef.current && !pipWindowRef.current?.closed ? 'var(--green)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.85rem', color: pipWindowRef.current && !pipWindowRef.current?.closed ? 'var(--green)' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⧉</button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
               <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</div>
               {volumeWidget}
+              <button onClick={openMiniPlayer} title="Pop out mini player" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⧉</button>
             </div>
           )}
         </div>
