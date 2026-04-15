@@ -1263,8 +1263,7 @@ export default function RoomPage() {
         // Track changed — always sync, never blocked by the 1-second guard.
         // The guard was causing canControl participants to miss new tracks when
         // ENDED set lastUpdateRef just before the new track arrived in Firestore.
-        p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
-        p.unMute?.(); p.setVolume?.(volume)
+        loadAndPlay(room.currentTrack.videoId, room.currentTime || 0)
         return
       }
       // Play/pause state change — only apply if we didn't trigger it ourselves
@@ -1314,8 +1313,7 @@ export default function RoomPage() {
       if (!p) return
       const vid = p.getVideoData?.()?.video_id
       if (room.currentTrack?.videoId && vid !== room.currentTrack.videoId) {
-        p.loadVideoById({ videoId: room.currentTrack.videoId, startSeconds: room.currentTime || 0 })
-        p.unMute?.(); p.setVolume?.(volume)
+        loadAndPlay(room.currentTrack.videoId, room.currentTime || 0)
         return
       }
       const state = p.getPlayerState?.()
@@ -1648,6 +1646,37 @@ export default function RoomPage() {
     }
   }
 
+  // ─── loadAndPlay: load a video and ensure it plays even when tab is hidden ──
+  // When the tab is hidden (PiP active), Chrome blocks the first playVideo() call.
+  // We fire retries at 400ms / 900ms / 1800ms / 3000ms from the time of the load
+  // so the new track auto-plays regardless of when the iframe is ready.
+  function loadAndPlay(videoId, startSeconds = 0) {
+    try {
+      const p = ytPlayerRef.current
+      if (!p) return
+      p.loadVideoById({ videoId, startSeconds })
+      p.unMute?.(); p.setVolume?.(volume)
+    } catch {}
+    if (!document.hidden) return
+    // Keep a reference so they all use the same videoId
+    const targetId = videoId
+    ;[400, 900, 1800, 3000].forEach(delay => {
+      setTimeout(() => {
+        try {
+          const p = ytPlayerRef.current
+          if (!p || !roomRef.current?.isPlaying) return
+          // Only retry for the video we loaded — skip if track already changed
+          if (p.getVideoData?.()?.video_id !== targetId) return
+          const state = p.getPlayerState?.()
+          if (state !== 1) {
+            p.unMute?.(); p.setVolume?.(volume)
+            p.playVideo?.()
+          }
+        } catch {}
+      }, delay)
+    })
+  }
+
   function handlePlayerReady(e) {
     initAudioKeepAlive()
     try {
@@ -1657,7 +1686,7 @@ export default function RoomPage() {
       if (!liveRoom?.currentTrack?.videoId) return
       e.target.unMute()
       e.target.setVolume(volume)
-      if (liveRoom.isPlaying) e.target.loadVideoById({ videoId: liveRoom.currentTrack.videoId, startSeconds: liveRoom.currentTime || 0 })
+      if (liveRoom.isPlaying) loadAndPlay(liveRoom.currentTrack.videoId, liveRoom.currentTime || 0)
       else e.target.cueVideoById({ videoId: liveRoom.currentTrack.videoId, startSeconds: liveRoom.currentTime || 0 })
       if (liveRoom.isPlaying && isMobile) {
         clearTimeout(mobileSkipTimerRef.current)
