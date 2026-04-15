@@ -1513,106 +1513,214 @@ export default function RoomPage() {
     // If already in PiP, exit it
     if (document.pictureInPictureElement) {
       await document.exitPictureInPicture().catch(() => {})
-      clearInterval(canvasPipIntervalRef.current)
+      canvasPipIntervalRef.current?.cancel?.()
+      clearInterval(canvasPipIntervalRef.current) // legacy fallback
       return
     }
 
     try {
-      // ── Build canvas if not yet created ──
+      // ── Canvas setup (480×270 — sharper on high-DPI) ──
       if (!canvasPipRef.current) {
         const c = document.createElement('canvas')
-        c.width = 320; c.height = 180
+        c.width = 480; c.height = 270
         canvasPipRef.current = c
       }
       const canvas = canvasPipRef.current
+      const W = canvas.width, H = canvas.height
       const ctx = canvas.getContext('2d')
 
-      // ── Draw function ──
-      function drawCanvas() {
+      // ── Animation state (survives across frames) ──
+      const anim = {
+        rotation: 0,           // album disc rotation angle (radians)
+        barHeights: Array.from({ length: 18 }, (_, i) => 0.15 + (i % 5) * 0.1),
+        barTargets: Array.from({ length: 18 }, () => Math.random()),
+        thumbImg: null,
+        thumbLoaded: false,
+        lastTrackId: null,
+      }
+
+      function loadThumb(url) {
+        const img = new window.Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => { anim.thumbImg = img; anim.thumbLoaded = true }
+        img.onerror = () => { anim.thumbLoaded = false; anim.thumbImg = null }
+        img.src = url
+      }
+
+      function fmt(s) {
+        if (!s || !isFinite(s)) return '0:00'
+        return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+      }
+
+      function drawFrame(ts) {
         const liveRoom = roomRef.current
         const track = liveRoom?.currentTrack
         const playing = liveRoom?.isPlaying
 
-        ctx.fillStyle = '#0d0d0d'
-        ctx.fillRect(0, 0, 320, 180)
-
-        // Green accent bar at top
-        const grad = ctx.createLinearGradient(0, 0, 320, 0)
-        grad.addColorStop(0, '#00ff88')
-        grad.addColorStop(1, '#00e5ff')
-        ctx.fillStyle = grad
-        ctx.fillRect(0, 0, 320, 4)
-
-        if (track?.thumbnail) {
-          // Draw blurred thumbnail as background
-          try {
-            const img = new window.Image()
-            img.crossOrigin = 'anonymous'
-            img.onload = () => {
-              ctx.save()
-              ctx.filter = 'blur(8px) brightness(0.25)'
-              ctx.drawImage(img, -20, -20, 360, 220)
-              ctx.filter = 'none'
-              ctx.restore()
-              // Redraw text on top after image loads
-              drawText(ctx, track, playing)
-            }
-            img.src = track.thumbnail
-          } catch {}
+        // Reload thumbnail if track changed
+        if (track?.videoId !== anim.lastTrackId) {
+          anim.lastTrackId = track?.videoId || null
+          anim.thumbLoaded = false
+          anim.thumbImg = null
+          if (track?.thumbnail) loadThumb(track.thumbnail)
         }
-        drawText(ctx, track, playing)
-      }
 
-      function drawText(ctx, track, playing) {
-        // We Vibe branding
+        // ── Background: blurred thumbnail or dark fallback ──
+        ctx.fillStyle = '#0a0a0a'
+        ctx.fillRect(0, 0, W, H)
+        if (anim.thumbImg) {
+          ctx.save()
+          ctx.filter = 'blur(22px) brightness(0.22) saturate(1.8)'
+          ctx.drawImage(anim.thumbImg, -30, -30, W + 60, H + 60)
+          ctx.filter = 'none'
+          ctx.restore()
+        }
+        // Dark gradient overlay for readability
+        const ov = ctx.createLinearGradient(0, 0, W, 0)
+        ov.addColorStop(0, 'rgba(0,0,0,0.75)')
+        ov.addColorStop(0.45, 'rgba(0,0,0,0.4)')
+        ov.addColorStop(1, 'rgba(0,0,0,0.15)')
+        ctx.fillStyle = ov
+        ctx.fillRect(0, 0, W, H)
+
+        // ── Spinning album disc (right side) ──
+        const cx = W - 100, cy = H / 2
+        const radius = 80
+        if (playing) anim.rotation = (anim.rotation + 0.012) % (Math.PI * 2)
+
+        ctx.save()
+        ctx.translate(cx, cy)
+        ctx.rotate(anim.rotation)
+
+        // Outer glow ring
+        const glowRing = ctx.createRadialGradient(0, 0, radius - 4, 0, 0, radius + 8)
+        glowRing.addColorStop(0, 'rgba(0,255,136,0.35)')
+        glowRing.addColorStop(1, 'rgba(0,255,136,0)')
+        ctx.beginPath(); ctx.arc(0, 0, radius + 8, 0, Math.PI * 2)
+        ctx.fillStyle = glowRing; ctx.fill()
+
+        // Album art circle
+        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.clip()
+        if (anim.thumbImg) {
+          ctx.drawImage(anim.thumbImg, -radius, -radius, radius * 2, radius * 2)
+        } else {
+          ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-radius, -radius, radius * 2, radius * 2)
+          ctx.fillStyle = '#333'; ctx.font = `${radius * 0.6}px system-ui`
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText('🎵', 0, 0)
+        }
+        ctx.restore()
+
+        // Disc border ring
+        ctx.save()
+        ctx.translate(cx, cy)
+        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(0,255,136,0.5)'; ctx.lineWidth = 2; ctx.stroke()
+
+        // Center spindle dot
+        ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2)
+        ctx.fillStyle = '#fff'; ctx.fill()
+        ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2)
+        ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 1.5; ctx.stroke()
+        ctx.restore()
+
+        // ── EQ bars (bottom of disc) ──
+        const nBars = 18, barW = 5, barGap = 3
+        const barsTotal = nBars * (barW + barGap) - barGap
+        const barsX = cx - barsTotal / 2
+        const barsY = cy + radius + 16
+        const maxBarH = 22
+
+        // Animate bar heights
+        anim.barTargets = anim.barTargets.map((t, i) => {
+          if (Math.random() < 0.15) return playing ? 0.2 + Math.random() * 0.8 : 0.05 + Math.random() * 0.1
+          return t
+        })
+        anim.barHeights = anim.barHeights.map((h, i) => h + (anim.barTargets[i] - h) * 0.18)
+
+        for (let i = 0; i < nBars; i++) {
+          const bh = Math.max(3, anim.barHeights[i] * maxBarH)
+          const bx = barsX + i * (barW + barGap)
+          const by = barsY - bh
+          const barColor = i % 3 === 0 ? '#00ff88' : i % 3 === 1 ? '#00e5ff' : '#a855f7'
+          ctx.fillStyle = playing ? barColor : 'rgba(255,255,255,0.15)'
+          ctx.beginPath()
+          if (ctx.roundRect) ctx.roundRect(bx, by, barW, bh, 2)
+          else ctx.rect(bx, by, barW, bh)
+          ctx.fill()
+        }
+
+        // ── Left side: text info ──
+        const lx = 22
+
+        // We Vibe logo
         ctx.fillStyle = '#00ff88'
-        ctx.font = 'bold 11px system-ui, sans-serif'
-        ctx.fillText('WE🕊️ VIBE', 16, 26)
+        ctx.font = 'bold 13px system-ui'
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+        ctx.fillText('WE🕊️ VIBE', lx, 28)
 
-        // Play state indicator
-        ctx.fillStyle = playing ? '#00ff88' : '#888'
-        ctx.font = 'bold 14px system-ui'
-        ctx.fillText(playing ? '▶ PLAYING' : '⏸ PAUSED', 200, 26)
+        // Play/pause badge
+        const badgeX = lx + 100
+        ctx.fillStyle = playing ? 'rgba(0,255,136,0.18)' : 'rgba(255,255,255,0.08)'
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(badgeX, 14, 70, 18, 4); ctx.fill() }
+        ctx.fillStyle = playing ? '#00ff88' : '#666'
+        ctx.font = 'bold 10px system-ui'
+        ctx.textAlign = 'center'
+        ctx.fillText(playing ? '▶  PLAYING' : '⏸  PAUSED', badgeX + 35, 27)
+        ctx.textAlign = 'left'
 
-        // Title
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 16px system-ui'
+        // Track title
         const title = track?.title || 'Nothing playing'
-        ctx.fillText(title.length > 28 ? title.slice(0, 28) + '…' : title, 16, 90)
+        const shortTitle = title.length > 22 ? title.slice(0, 22) + '…' : title
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 19px system-ui'
+        ctx.fillText(shortTitle, lx, 80)
 
         // Artist
-        ctx.fillStyle = '#888888'
-        ctx.font = '13px system-ui'
-        const artist = track?.channelTitle || ''
-        ctx.fillText(artist.length > 34 ? artist.slice(0, 34) + '…' : artist, 16, 114)
+        const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '')
+        const shortArtist = artist.length > 26 ? artist.slice(0, 26) + '…' : artist
+        ctx.fillStyle = '#aaaaaa'
+        ctx.font = '14px system-ui'
+        ctx.fillText(shortArtist, lx, 104)
 
-        // Progress bar
+        // ── Progress bar ──
         try {
           const p = ytPlayerRef.current
-          const ct = typeof p?.getCurrentTime === 'function' ? p.getCurrentTime() : 0
-          const dur = typeof p?.getDuration === 'function' ? p.getDuration() : 0
-          if (dur > 0) {
-            const pct = Math.min(1, ct / dur)
-            ctx.fillStyle = 'rgba(255,255,255,0.12)'
-            ctx.beginPath(); ctx.roundRect(16, 150, 288, 4, 2); ctx.fill()
-            const barGrad = ctx.createLinearGradient(16, 0, 16 + 288 * pct, 0)
-            barGrad.addColorStop(0, '#00ff88'); barGrad.addColorStop(1, '#00e5ff')
-            ctx.fillStyle = barGrad
-            ctx.beginPath(); ctx.roundRect(16, 150, 288 * pct, 4, 2); ctx.fill()
-            // Times
-            const fmt = s => { if (!s||!isFinite(s)) return '0:00'; return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}` }
-            ctx.fillStyle = '#555'
-            ctx.font = '10px system-ui'
-            ctx.fillText(fmt(ct), 16, 168)
-            ctx.textAlign = 'right'
-            ctx.fillText(fmt(dur), 304, 168)
-            ctx.textAlign = 'left'
+          const ct = (typeof p?.getCurrentTime === 'function' ? p.getCurrentTime() : null) ?? 0
+          const dur = (typeof p?.getDuration === 'function' ? p.getDuration() : null) ?? 0
+          const pct = dur > 0 ? Math.min(1, ct / dur) : 0
+          const pbX = lx, pbY = H - 38, pbW = W - cx - radius - lx - 10
+
+          // Track bg
+          ctx.fillStyle = 'rgba(255,255,255,0.1)'
+          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, pbY, pbW, 5, 2.5); ctx.fill() }
+          else ctx.fillRect(pbX, pbY, pbW, 5)
+
+          // Fill
+          if (pct > 0) {
+            const fillGrad = ctx.createLinearGradient(pbX, 0, pbX + pbW, 0)
+            fillGrad.addColorStop(0, '#00ff88'); fillGrad.addColorStop(1, '#00e5ff')
+            ctx.fillStyle = fillGrad
+            if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, pbY, pbW * pct, 5, 2.5); ctx.fill() }
+            else ctx.fillRect(pbX, pbY, pbW * pct, 5)
           }
+
+          // Times
+          ctx.fillStyle = '#666'
+          ctx.font = '11px system-ui'
+          ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  pbX, H - 18)
+          ctx.textAlign = 'right'; ctx.fillText(fmt(dur), pbX + pbW, H - 18)
+          ctx.textAlign = 'left'
         } catch {}
       }
 
-      // ── Initial draw ──
-      drawCanvas()
+      // ── Animation loop ──
+      let rafId = null
+      function loop(ts) {
+        drawFrame(ts)
+        rafId = requestAnimationFrame(loop)
+      }
+      rafId = requestAnimationFrame(loop)
 
       // ── Wire canvas → video ──
       if (!videoPipRef.current) {
@@ -1624,20 +1732,21 @@ export default function RoomPage() {
         videoPipRef.current = video
       }
       const video = videoPipRef.current
-      const stream = canvas.captureStream(2) // 2 fps — enough for text updates
+      const stream = canvas.captureStream(30) // 30fps for smooth animation
       video.srcObject = stream
       await video.play()
 
       // ── Enter PiP ──
       await video.requestPictureInPicture()
 
-      // ── Keep canvas up to date ──
+      // Cancel static interval from before — animation now runs via rAF
       clearInterval(canvasPipIntervalRef.current)
-      canvasPipIntervalRef.current = setInterval(drawCanvas, 600)
+      // Store cancel fn in the ref so leavepictureinpicture can clean up
+      canvasPipIntervalRef.current = { cancel: () => { if (rafId) cancelAnimationFrame(rafId) } }
 
-      // Stop interval when PiP is closed
+      // Stop animation when PiP is closed
       video.addEventListener('leavepictureinpicture', () => {
-        clearInterval(canvasPipIntervalRef.current)
+        canvasPipIntervalRef.current?.cancel?.()
       }, { once: true })
 
       toast.success('Mini player active — switch apps freely!')
