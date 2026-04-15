@@ -29,30 +29,40 @@ export async function GET(request) {
   if (!API_KEY) return NextResponse.json({ error: 'YouTube API not configured' }, { status: 500 })
 
   try {
-    // Fetch playlist items (up to 25)
+    // Fetch ALL playlist items by paginating through nextPageToken
     const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
-    const itemsUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${playlistId}&maxResults=25&key=${API_KEY}`
-    const itemsRes = await fetch(itemsUrl, { headers })
-    const itemsData = await itemsRes.json()
+    const allItems = []
+    let pageToken = ''
+    do {
+      const pageParam = pageToken ? `&pageToken=${pageToken}` : ''
+      const itemsUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${playlistId}&maxResults=50&key=${API_KEY}${pageParam}`
+      const itemsRes = await fetch(itemsUrl, { headers })
+      const itemsData = await itemsRes.json()
+      if (!itemsData.items?.length) break
+      allItems.push(...itemsData.items)
+      pageToken = itemsData.nextPageToken || ''
+    } while (pageToken)
 
-    if (!itemsData.items?.length) return NextResponse.json({ results: [] })
+    if (!allItems.length) return NextResponse.json({ results: [] })
 
     // Filter out deleted/private videos
-    const validItems = itemsData.items.filter(
+    const validItems = allItems.filter(
       (i) => i.snippet.title !== 'Deleted video' && i.snippet.title !== 'Private video'
     )
 
-    const videoIds = validItems.map((i) => i.contentDetails.videoId).join(',')
+    const videoIds = validItems.map((i) => i.contentDetails.videoId)
 
-    // Fetch durations
-    const detailUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${API_KEY}`
-    const detailRes = await fetch(detailUrl)
-    const detailData = await detailRes.json()
-
+    // YouTube videos endpoint accepts max 50 IDs per request — batch if needed
     const durationMap = {}
-    detailData.items?.forEach((v) => {
-      durationMap[v.id] = parseDuration(v.contentDetails.duration)
-    })
+    for (let i = 0; i < videoIds.length; i += 50) {
+      const batch = videoIds.slice(i, i + 50).join(',')
+      const detailUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${batch}&key=${API_KEY}`
+      const detailRes = await fetch(detailUrl)
+      const detailData = await detailRes.json()
+      detailData.items?.forEach((v) => {
+        durationMap[v.id] = parseDuration(v.contentDetails.duration)
+      })
+    }
 
     const results = validItems.map((item) => {
       const videoId = item.contentDetails.videoId

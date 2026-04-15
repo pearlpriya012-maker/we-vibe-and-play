@@ -21,7 +21,7 @@ function formatDuration(seconds) {
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const q = searchParams.get('q')
-  const limit = Math.min(parseInt(searchParams.get('limit') || '10'), 25)
+  const limit = Math.min(parseInt(searchParams.get('limit') || '30'), 50)
 
   if (!q) return NextResponse.json({ error: 'Missing query' }, { status: 400 })
 
