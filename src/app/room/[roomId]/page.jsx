@@ -1529,11 +1529,10 @@ export default function RoomPage() {
       const W = canvas.width, H = canvas.height
       const ctx = canvas.getContext('2d')
 
-      // ── Animation state (survives across frames) ──
+      // ── Animation state ──
       const anim = {
-        rotation: 0,           // album disc rotation angle (radians)
-        barHeights: Array.from({ length: 18 }, (_, i) => 0.15 + (i % 5) * 0.1),
-        barTargets: Array.from({ length: 18 }, () => Math.random()),
+        barHeights: Array.from({ length: 32 }, (_, i) => 0.1 + (i % 6) * 0.08),
+        barTargets: Array.from({ length: 32 }, () => Math.random()),
         thumbImg: null,
         thumbLoaded: false,
         lastTrackId: null,
@@ -1552,7 +1551,17 @@ export default function RoomPage() {
         return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
       }
 
-      function drawFrame(ts) {
+      // Layout zones (480×270)
+      const PAD = 20
+      const TOP_H = 44      // zone 1: top bar (y 0–44)
+      const INFO_Y = 52     // zone 2: track info starts
+      const INFO_H = 72     // thumbnail 66×66
+      const EQ_Y = 138      // zone 3: EQ bars base-line top
+      const EQ_H = 58       // max bar height
+      const PB_Y = 212      // zone 4: progress bar
+      const PB_H = 5
+
+      function drawFrame() {
         const liveRoom = roomRef.current
         const track = liveRoom?.currentTrack
         const playing = liveRoom?.isPlaying
@@ -1560,164 +1569,151 @@ export default function RoomPage() {
         // Reload thumbnail if track changed
         if (track?.videoId !== anim.lastTrackId) {
           anim.lastTrackId = track?.videoId || null
-          anim.thumbLoaded = false
-          anim.thumbImg = null
+          anim.thumbLoaded = false; anim.thumbImg = null
           if (track?.thumbnail) loadThumb(track.thumbnail)
         }
 
-        // ── Background: blurred thumbnail or dark fallback ──
-        ctx.fillStyle = '#0a0a0a'
+        // ── Zone 0: Background ──
+        ctx.fillStyle = '#0d0d0d'
         ctx.fillRect(0, 0, W, H)
         if (anim.thumbImg) {
           ctx.save()
-          ctx.filter = 'blur(22px) brightness(0.22) saturate(1.8)'
-          ctx.drawImage(anim.thumbImg, -30, -30, W + 60, H + 60)
+          ctx.filter = 'blur(24px) brightness(0.18) saturate(2)'
+          ctx.drawImage(anim.thumbImg, -40, -40, W + 80, H + 80)
           ctx.filter = 'none'
           ctx.restore()
         }
-        // Dark gradient overlay for readability
-        const ov = ctx.createLinearGradient(0, 0, W, 0)
-        ov.addColorStop(0, 'rgba(0,0,0,0.75)')
-        ov.addColorStop(0.45, 'rgba(0,0,0,0.4)')
-        ov.addColorStop(1, 'rgba(0,0,0,0.15)')
-        ctx.fillStyle = ov
+        // Full dark overlay so zones are always readable
+        ctx.fillStyle = 'rgba(0,0,0,0.62)'
         ctx.fillRect(0, 0, W, H)
 
-        // ── Spinning album disc (right side) ──
-        const cx = W - 100, cy = H / 2
-        const radius = 80
-        if (playing) anim.rotation = (anim.rotation + 0.012) % (Math.PI * 2)
+        ctx.textBaseline = 'alphabetic'
 
+        // ── Zone 1: Top bar ──
+        // Logo
+        ctx.fillStyle = '#00ff88'
+        ctx.font = 'bold 14px system-ui'
+        ctx.textAlign = 'left'
+        ctx.fillText('WE🕊️ VIBE', PAD, 30)
+
+        // Playing badge (right-aligned)
+        const badgeTxt = playing ? '▶  PLAYING' : '⏸  PAUSED'
+        const badgeW = 80, badgeH = 20, badgeX = W - PAD - badgeW, badgeY = 12
+        ctx.fillStyle = playing ? 'rgba(0,255,136,0.15)' : 'rgba(255,255,255,0.07)'
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4); ctx.fill() }
+        else ctx.fillRect(badgeX, badgeY, badgeW, badgeH)
+        ctx.fillStyle = playing ? '#00ff88' : '#555'
+        ctx.font = 'bold 10px system-ui'
+        ctx.textAlign = 'center'
+        ctx.fillText(badgeTxt, badgeX + badgeW / 2, badgeY + 13)
+
+        // Separator line
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+        ctx.lineWidth = 1
+        ctx.beginPath(); ctx.moveTo(PAD, TOP_H); ctx.lineTo(W - PAD, TOP_H); ctx.stroke()
+
+        // ── Zone 2: Track info (thumbnail + text) ──
+        const thumbSz = 66, thumbX = PAD, thumbY = INFO_Y
+        // Thumbnail
         ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(anim.rotation)
-
-        // Outer glow ring
-        const glowRing = ctx.createRadialGradient(0, 0, radius - 4, 0, 0, radius + 8)
-        glowRing.addColorStop(0, 'rgba(0,255,136,0.35)')
-        glowRing.addColorStop(1, 'rgba(0,255,136,0)')
-        ctx.beginPath(); ctx.arc(0, 0, radius + 8, 0, Math.PI * 2)
-        ctx.fillStyle = glowRing; ctx.fill()
-
-        // Album art circle
-        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.clip()
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(thumbX, thumbY, thumbSz, thumbSz, 6); ctx.clip() }
+        else { ctx.beginPath(); ctx.rect(thumbX, thumbY, thumbSz, thumbSz); ctx.clip() }
         if (anim.thumbImg) {
-          ctx.drawImage(anim.thumbImg, -radius, -radius, radius * 2, radius * 2)
+          ctx.drawImage(anim.thumbImg, thumbX, thumbY, thumbSz, thumbSz)
         } else {
-          ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-radius, -radius, radius * 2, radius * 2)
-          ctx.fillStyle = '#333'; ctx.font = `${radius * 0.6}px system-ui`
+          ctx.fillStyle = '#1c1c1c'; ctx.fillRect(thumbX, thumbY, thumbSz, thumbSz)
+          ctx.fillStyle = '#444'; ctx.font = '28px system-ui'
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-          ctx.fillText('🎵', 0, 0)
+          ctx.fillText('🎵', thumbX + thumbSz / 2, thumbY + thumbSz / 2)
+          ctx.textBaseline = 'alphabetic'
         }
         ctx.restore()
+        // Thumbnail border
+        ctx.strokeStyle = 'rgba(0,255,136,0.25)'; ctx.lineWidth = 1.5
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(thumbX, thumbY, thumbSz, thumbSz, 6); ctx.stroke() }
+        else { ctx.strokeRect(thumbX, thumbY, thumbSz, thumbSz) }
 
-        // Disc border ring
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(0,255,136,0.5)'; ctx.lineWidth = 2; ctx.stroke()
+        // Text beside thumbnail
+        const tx = thumbX + thumbSz + 14
+        const maxTxtW = W - tx - PAD
 
-        // Center spindle dot
-        ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2)
-        ctx.fillStyle = '#fff'; ctx.fill()
-        ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2)
-        ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 1.5; ctx.stroke()
-        ctx.restore()
+        const title = track?.title || 'Nothing playing'
+        const shortTitle = title.length > 22 ? title.slice(0, 22) + '…' : title
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 18px system-ui'
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+        ctx.fillText(shortTitle, tx, INFO_Y + 26)
 
-        // ── EQ bars (bottom of disc) ──
-        const nBars = 18, barW = 5, barGap = 3
+        const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '')
+        const shortArtist = artist.length > 26 ? artist.slice(0, 26) + '…' : artist
+        ctx.fillStyle = '#999'
+        ctx.font = '13px system-ui'
+        ctx.fillText(shortArtist, tx, INFO_Y + 48)
+
+        // ── Zone 3: EQ bars (full width, centered) ──
+        const nBars = 32, barW = 7, barGap = 6
         const barsTotal = nBars * (barW + barGap) - barGap
-        const barsX = cx - barsTotal / 2
-        const barsY = cy + radius + 16
-        const maxBarH = 22
+        const barsX = (W - barsTotal) / 2
+        const barsBaseY = EQ_Y + EQ_H   // bars grow upward from here
 
         // Animate bar heights
         anim.barTargets = anim.barTargets.map((t, i) => {
-          if (Math.random() < 0.15) return playing ? 0.2 + Math.random() * 0.8 : 0.05 + Math.random() * 0.1
+          if (Math.random() < 0.12)
+            return playing ? 0.15 + Math.random() * 0.85 : 0.04 + Math.random() * 0.08
           return t
         })
-        anim.barHeights = anim.barHeights.map((h, i) => h + (anim.barTargets[i] - h) * 0.18)
+        anim.barHeights = anim.barHeights.map((h, i) => h + (anim.barTargets[i] - h) * 0.16)
+
+        // Gradient for bars
+        const eqGrad = ctx.createLinearGradient(barsX, barsBaseY - EQ_H, barsX, barsBaseY)
+        eqGrad.addColorStop(0, playing ? '#00ff88' : '#2a2a2a')
+        eqGrad.addColorStop(0.5, playing ? '#00e5ff' : '#222')
+        eqGrad.addColorStop(1, playing ? '#a855f7' : '#1a1a1a')
 
         for (let i = 0; i < nBars; i++) {
-          const bh = Math.max(3, anim.barHeights[i] * maxBarH)
+          const bh = Math.max(4, anim.barHeights[i] * EQ_H)
           const bx = barsX + i * (barW + barGap)
-          const by = barsY - bh
-          const barColor = i % 3 === 0 ? '#00ff88' : i % 3 === 1 ? '#00e5ff' : '#a855f7'
-          ctx.fillStyle = playing ? barColor : 'rgba(255,255,255,0.15)'
+          const by = barsBaseY - bh
+          ctx.fillStyle = eqGrad
           ctx.beginPath()
           if (ctx.roundRect) ctx.roundRect(bx, by, barW, bh, 2)
           else ctx.rect(bx, by, barW, bh)
           ctx.fill()
         }
 
-        // ── Left side: text info ──
-        const lx = 22
-
-        // We Vibe logo
-        ctx.fillStyle = '#00ff88'
-        ctx.font = 'bold 13px system-ui'
-        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
-        ctx.fillText('WE🕊️ VIBE', lx, 28)
-
-        // Play/pause badge
-        const badgeX = lx + 100
-        ctx.fillStyle = playing ? 'rgba(0,255,136,0.18)' : 'rgba(255,255,255,0.08)'
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(badgeX, 14, 70, 18, 4); ctx.fill() }
-        ctx.fillStyle = playing ? '#00ff88' : '#666'
-        ctx.font = 'bold 10px system-ui'
-        ctx.textAlign = 'center'
-        ctx.fillText(playing ? '▶  PLAYING' : '⏸  PAUSED', badgeX + 35, 27)
-        ctx.textAlign = 'left'
-
-        // Track title
-        const title = track?.title || 'Nothing playing'
-        const shortTitle = title.length > 22 ? title.slice(0, 22) + '…' : title
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 19px system-ui'
-        ctx.fillText(shortTitle, lx, 80)
-
-        // Artist
-        const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '')
-        const shortArtist = artist.length > 26 ? artist.slice(0, 26) + '…' : artist
-        ctx.fillStyle = '#aaaaaa'
-        ctx.font = '14px system-ui'
-        ctx.fillText(shortArtist, lx, 104)
-
-        // ── Progress bar ──
+        // ── Zone 4: Progress bar ──
         try {
           const p = ytPlayerRef.current
           const ct = (typeof p?.getCurrentTime === 'function' ? p.getCurrentTime() : null) ?? 0
           const dur = (typeof p?.getDuration === 'function' ? p.getDuration() : null) ?? 0
           const pct = dur > 0 ? Math.min(1, ct / dur) : 0
-          const pbX = lx, pbY = H - 38, pbW = W - cx - radius - lx - 10
+          const pbX = PAD, pbW = W - PAD * 2
 
-          // Track bg
           ctx.fillStyle = 'rgba(255,255,255,0.1)'
-          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, pbY, pbW, 5, 2.5); ctx.fill() }
-          else ctx.fillRect(pbX, pbY, pbW, 5)
+          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, PB_Y, pbW, PB_H, 2.5); ctx.fill() }
+          else ctx.fillRect(pbX, PB_Y, pbW, PB_H)
 
-          // Fill
           if (pct > 0) {
-            const fillGrad = ctx.createLinearGradient(pbX, 0, pbX + pbW, 0)
-            fillGrad.addColorStop(0, '#00ff88'); fillGrad.addColorStop(1, '#00e5ff')
-            ctx.fillStyle = fillGrad
-            if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, pbY, pbW * pct, 5, 2.5); ctx.fill() }
-            else ctx.fillRect(pbX, pbY, pbW * pct, 5)
+            const fg = ctx.createLinearGradient(pbX, 0, pbX + pbW, 0)
+            fg.addColorStop(0, '#00ff88'); fg.addColorStop(1, '#00e5ff')
+            ctx.fillStyle = fg
+            if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, PB_Y, pbW * pct, PB_H, 2.5); ctx.fill() }
+            else ctx.fillRect(pbX, PB_Y, pbW * pct, PB_H)
           }
 
-          // Times
-          ctx.fillStyle = '#666'
+          ctx.fillStyle = '#555'
           ctx.font = '11px system-ui'
-          ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  pbX, H - 18)
-          ctx.textAlign = 'right'; ctx.fillText(fmt(dur), pbX + pbW, H - 18)
+          ctx.textBaseline = 'alphabetic'
+          ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  pbX, PB_Y + PB_H + 18)
+          ctx.textAlign = 'right'; ctx.fillText(fmt(dur), pbX + pbW, PB_Y + PB_H + 18)
           ctx.textAlign = 'left'
         } catch {}
       }
 
       // ── Animation loop ──
       let rafId = null
-      function loop(ts) {
-        drawFrame(ts)
+      function loop() {
+        drawFrame()
         rafId = requestAnimationFrame(loop)
       }
       rafId = requestAnimationFrame(loop)
