@@ -1536,6 +1536,7 @@ export default function RoomPage() {
         barTargets: Array.from({ length: 44 }, () => Math.random() * 0.4),
         thumbImg: null,
         lastTrackId: null,
+        skipFired: false,  // prevents firing skipToNext multiple times per song
       }
 
       function loadThumb(url) {
@@ -1560,7 +1561,32 @@ export default function RoomPage() {
         if (track?.videoId !== anim.lastTrackId) {
           anim.lastTrackId = track?.videoId || null
           anim.thumbImg = null
+          anim.skipFired = false   // new song — allow watchdog to fire again
           if (track?.thumbnail) loadThumb(track.thumbnail)
+        }
+
+        // ── ENDED watchdog: when tab is hidden the YT onStateChange may never fire ──
+        // Poll the player state every frame; if ENDED and we haven't already
+        // triggered a skip for this song, do it now.
+        if (!anim.skipFired) {
+          try {
+            const ytStates = window.YT?.PlayerState
+            const pState = ytPlayerRef.current?.getPlayerState?.()
+            if (ytStates && pState === ytStates.ENDED) {
+              anim.skipFired = true
+              const liveIsHost = roomRef.current?.hostId === user?.uid
+              if (liveIsHost) {
+                skipToNext(roomId).catch(() => {})
+              } else {
+                // Participant: write skipRequested so host picks it up
+                import('firebase/firestore').then(({ updateDoc, doc }) =>
+                  import('@/lib/firebase').then(({ db }) =>
+                    updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() }).catch(() => {})
+                  )
+                )
+              }
+            }
+          } catch {}
         }
 
         // ── Background ──
@@ -1771,6 +1797,13 @@ export default function RoomPage() {
           if (state !== 1) {
             p.unMute?.(); p.setVolume?.(volume)
             p.playVideo?.()
+            // Also postMessage directly to iframe — bypasses IFrame API throttling
+            // when the tab is hidden (Chrome throttles JS timers but not postMessage)
+            try {
+              const iframe = document.querySelector('iframe[src*="youtube"]')
+              if (iframe?.contentWindow)
+                iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+            } catch {}
           }
         } catch {}
       }, delay)
