@@ -58,6 +58,7 @@ export async function GET(request) {
       durationFormatted: formatDuration(durationMap[item.id.videoId] || 0),
       publishedAt: item.snippet.publishedAt,
     }))
+      .filter((item) => item.duration > 60) // exclude YouTube Shorts (≤ 60 s)
 
     return NextResponse.json({ results })
   } catch (err) {
