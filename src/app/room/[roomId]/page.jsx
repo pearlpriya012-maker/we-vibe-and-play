@@ -903,6 +903,7 @@ export default function RoomPage() {
   const playlistTriedRef = useRef(null)     // videoId of last track we tried loadPlaylist for (prevents infinite loop)
   const keepAliveCtxRef = useRef(null)      // Web Audio context — keeps tab classified as active audio in background
   const keepAliveAudioRef = useRef(null)    // <audio> element driven by the keepalive stream
+  const bgWatchdogRef = useRef(null)        // interval that fights YouTube auto-pause while tab is hidden
   // Watch URL room sync
   const watchIframeRef = useRef(null)       // ref to watch URL <iframe> (non-YT only)
   const watchYtPlayerRef = useRef(null)     // real YT.Player for watch room YouTube videos
@@ -1026,23 +1027,32 @@ export default function RoomPage() {
         // tab in the "active audio" category — that's what unblocks playVideo()
         // from background JS.
         keepAliveAudioRef.current?.play().catch(() => {})
-        // YouTube's iframe fires pauseVideo() ~100-300ms after visibilitychange.
-        // Poll twice to guarantee we override it regardless of timing.
-        setTimeout(() => {
+
+        // Youtube's iframe fires pauseVideo() ~100–300 ms after visibilitychange.
+        // Poll at several checkpoints to cover any timing variation, then keep a
+        // sustained watchdog that runs every 1.5 s for as long as the tab stays
+        // hidden — Chrome can re-pause silently at any point on low-power devices.
+        function tryResume() {
           try {
             if (roomRef.current?.isPlaying && ytPlayerRef.current?.getPlayerState?.() !== 1)
               ytPlayerRef.current?.playVideo?.()
           } catch {}
-        }, 400)
-        setTimeout(() => {
-          try {
-            if (roomRef.current?.isPlaying && ytPlayerRef.current?.getPlayerState?.() !== 1)
-              ytPlayerRef.current?.playVideo?.()
-          } catch {}
-        }, 1200)
+        }
+        setTimeout(tryResume, 300)
+        setTimeout(tryResume, 700)
+        setTimeout(tryResume, 1400)
+        setTimeout(tryResume, 2500)
+
+        // Clear any existing watchdog before starting a new one
+        clearInterval(bgWatchdogRef.current)
+        bgWatchdogRef.current = setInterval(() => {
+          if (!document.hidden) { clearInterval(bgWatchdogRef.current); return }
+          tryResume()
+        }, 1500)
         return
       }
-      // Page came back to foreground — re-sync
+      // Tab came back to foreground — stop watchdog and re-sync
+      clearInterval(bgWatchdogRef.current)
       try {
         const state = p.getPlayerState?.()
         if (state !== 1) {
@@ -1054,7 +1064,10 @@ export default function RoomPage() {
       } catch {}
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(bgWatchdogRef.current)
+    }
   }, [volume])
 
   // ─── Watch URL room: real player helpers ───
@@ -1137,7 +1150,17 @@ export default function RoomPage() {
         })
       : null
     navigator.mediaSession.playbackState = room?.isPlaying ? 'playing' : 'paused'
-  }, [room?.currentTrack?.videoId, room?.isPlaying])
+    // Report position so the OS scrubber advances while the tab is in background
+    try {
+      if (track && duration > 0) {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: 1,
+          position: Math.min(currentTime, duration),
+        })
+      }
+    } catch {}
+  }, [room?.currentTrack?.videoId, room?.isPlaying, currentTime, duration])
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || !canControl) return
@@ -1386,6 +1409,9 @@ export default function RoomPage() {
 
     if (YT && (e.data === YT.PLAYING || e.data === YT.BUFFERING)) {
       clearTimeout(mobileSkipTimerRef.current)
+      // Ensure the keepalive audio is running whenever music starts — it must be
+      // active before the user switches tabs, not after.
+      initAudioKeepAlive()
       // Always unmute when playback starts — iOS remutes on every new video load
       try { e.target.unMute?.(); e.target.setVolume?.(volume) } catch {}
     }
