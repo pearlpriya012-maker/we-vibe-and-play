@@ -1581,29 +1581,8 @@ export default function RoomPage() {
           if (track?.thumbnail) loadThumb(track.thumbnail)
         }
 
-        // ── ENDED watchdog: when tab is hidden the YT onStateChange may never fire ──
-        // Poll the player state every frame; if ENDED and we haven't already
-        // triggered a skip for this song, do it now.
-        if (!anim.skipFired) {
-          try {
-            const ytStates = window.YT?.PlayerState
-            const pState = ytPlayerRef.current?.getPlayerState?.()
-            if (ytStates && pState === ytStates.ENDED) {
-              anim.skipFired = true
-              const liveIsHost = roomRef.current?.hostId === user?.uid
-              if (liveIsHost) {
-                skipToNext(roomId).catch(() => {})
-              } else {
-                // Participant: write skipRequested so host picks it up
-                import('firebase/firestore').then(({ updateDoc, doc }) =>
-                  import('@/lib/firebase').then(({ db }) =>
-                    updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() }).catch(() => {})
-                  )
-                )
-              }
-            }
-          } catch {}
-        }
+        // ── ENDED watchdog: handled by dedicated setInterval below (rAF is
+        // suspended when document.hidden=true so we can't rely on it here) ──
 
         // ── Background ──
         ctx.fillStyle = '#0a0a0a'
@@ -1748,12 +1727,47 @@ export default function RoomPage() {
       }
 
       // ── Animation loop ──
+      // rAF handles canvas drawing but is SUSPENDED when document.hidden = true
+      // (i.e. whenever the user switches away from the tab while PiP is open).
+      // The ENDED watchdog therefore lives in a separate setInterval that keeps
+      // running even while the tab is hidden, so songs auto-advance in PiP.
       let rafId = null
       function loop() {
         drawFrame()
         rafId = requestAnimationFrame(loop)
       }
       rafId = requestAnimationFrame(loop)
+
+      // Dedicated ENDED-watchdog interval — runs at 1 s even when tab is hidden
+      const watchdogInterval = setInterval(() => {
+        // Reset skipFired when track changes (drawFrame handles this when visible,
+        // but rAF is throttled when hidden so we mirror it here)
+        const liveTrackId = roomRef.current?.currentTrack?.videoId || null
+        if (liveTrackId !== anim.lastTrackId) {
+          anim.lastTrackId = liveTrackId
+          anim.skipFired = false
+          if (roomRef.current?.currentTrack?.thumbnail) loadThumb(roomRef.current.currentTrack.thumbnail)
+        }
+        if (!anim.skipFired) {
+          try {
+            const ytStates = window.YT?.PlayerState
+            const pState = ytPlayerRef.current?.getPlayerState?.()
+            if (ytStates && pState === ytStates.ENDED) {
+              anim.skipFired = true
+              const liveIsHost = roomRef.current?.hostId === user?.uid
+              if (liveIsHost) {
+                skipToNext(roomId).catch(() => {})
+              } else {
+                import('firebase/firestore').then(({ updateDoc, doc }) =>
+                  import('@/lib/firebase').then(({ db }) =>
+                    updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() }).catch(() => {})
+                  )
+                )
+              }
+            }
+          } catch {}
+        }
+      }, 1000)
 
       // ── Wire canvas → video ──
       if (!videoPipRef.current) {
@@ -1775,7 +1789,12 @@ export default function RoomPage() {
       // Cancel static interval from before — animation now runs via rAF
       clearInterval(canvasPipIntervalRef.current)
       // Store cancel fn in the ref so leavepictureinpicture can clean up
-      canvasPipIntervalRef.current = { cancel: () => { if (rafId) cancelAnimationFrame(rafId) } }
+      canvasPipIntervalRef.current = {
+        cancel: () => {
+          if (rafId) cancelAnimationFrame(rafId)
+          clearInterval(watchdogInterval)
+        }
+      }
 
       // Stop animation when PiP is closed
       video.addEventListener('leavepictureinpicture', () => {
