@@ -1897,7 +1897,7 @@ export default function RoomPage() {
         const plainText = (!hasSync && lyrSnap?.plain) ? lyrSnap.plain : null
         const hasPlain  = !!plainText && plainText.trim().length > 10
         const ly        = [90, 112, 134]        // active + next 2, 22px spacing
-        const dimLyric  = `rgba(${ar},${ag},${ab},0.6)`  // album accent, dimmed
+        const dimLyric  = `rgba(${ar},${ag},${ab},0.9)`  // album accent, near full opacity
         if (hasSync) {
           const lines     = lyrSnap.lines
           const activeIdx = lines.reduce((best, line, i) => line.time <= ct ? i : best, 0)
