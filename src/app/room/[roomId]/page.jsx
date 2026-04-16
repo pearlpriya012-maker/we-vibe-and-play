@@ -28,9 +28,9 @@ function MusicVisualizer({ track, isPlaying, compact = false }) {
     return (
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2.5, height: 22, flexShrink: 0 }}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ width: 3, borderRadius: 2, background: i % 2 === 0 ? 'var(--green)' : 'var(--cyan)', animation: isPlaying ? `mobileBar ${0.38 + i * 0.11}s ease-in-out ${i * 0.09}s infinite alternate` : 'none', height: isPlaying ? `${40 + i * 10}%` : '20%', transition: 'height 0.3s', opacity: 0.9 }} />
+          <div key={i} style={{ width: 3, borderRadius: 2, background: 'linear-gradient(to bottom, #ff2775, #f97316 42%, #06b6d4)', animation: isPlaying ? `mobileBar ${0.3 + i * 0.1}s ease-in-out ${i * 0.08}s infinite alternate` : 'none', height: isPlaying ? `${40 + i * 10}%` : '20%', transition: 'height 0.3s', opacity: 0.95, boxShadow: isPlaying ? '0 0 4px rgba(255,39,117,0.55)' : 'none' }} />
         ))}
-        <style>{`@keyframes mobileBar { from{height:15%} to{height:100%} }`}</style>
+        <style>{`@keyframes mobileBar { from{height:12%} to{height:100%} }`}</style>
       </div>
     )
   }
@@ -50,16 +50,16 @@ function MusicVisualizer({ track, isPlaying, compact = false }) {
       </div>
       {/* Center spindle */}
       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-56%)', width: 13, height: 13, borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 2.5px var(--green), 0 0 16px var(--green)', zIndex: 2 }} />
-      {/* Equalizer bars */}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '22%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, padding: '0 16px 14px', background: 'linear-gradient(0deg, rgba(0,0,0,0.92) 0%, transparent 100%)' }}>
-        {Array.from({ length: 22 }).map((_, i) => (
-          <div key={i} style={{ flex: 1, borderRadius: '3px 3px 0 0', background: i % 3 === 0 ? 'var(--green)' : i % 3 === 1 ? 'var(--cyan)' : '#a855f7', animation: isPlaying ? `barBeat2 ${0.36 + (i % 7) * 0.09}s ease-in-out ${i * 0.043}s infinite alternate` : 'none', height: isPlaying ? `${18 + (i % 8) * 10}%` : '6%', transition: 'height 0.5s ease', opacity: isPlaying ? 0.88 : 0.25 }} />
+      {/* Spectrum bars */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '28%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, padding: '0 10px 12px', background: 'linear-gradient(0deg, rgba(0,0,0,0.96) 0%, transparent 100%)' }}>
+        {Array.from({ length: 40 }).map((_, i) => (
+          <div key={i} style={{ flex: 1, borderRadius: '2px 2px 0 0', background: 'linear-gradient(to bottom, #ff2775 0%, #f97316 46%, #06b6d4 100%)', animation: isPlaying ? `specBar ${0.24 + (i % 7) * 0.07}s ease-in-out ${i * 0.027}s infinite alternate` : 'none', height: isPlaying ? `${20 + (i % 9) * 9}%` : '5%', transition: 'height 0.4s ease', opacity: isPlaying ? 0.95 : 0.16, boxShadow: isPlaying ? '0 0 3px rgba(255,39,117,0.4)' : 'none' }} />
         ))}
       </div>
       <style>{`
         @keyframes spinAlbum { from{transform:translate(-50%,-56%) rotate(0deg)} to{transform:translate(-50%,-56%) rotate(360deg)} }
         @keyframes pulseRing { 0%{opacity:0.5;transform:translate(-50%,-56%) scale(1)} 100%{opacity:0;transform:translate(-50%,-56%) scale(1.35)} }
-        @keyframes barBeat2 { from{height:6%} to{height:90%} }
+        @keyframes specBar { from{height:4%} to{height:98%} }
       `}</style>
     </div>
   )
@@ -1773,42 +1773,43 @@ export default function RoomPage() {
         ctx.font = '9.5px system-ui'
         ctx.fillText(truncLyric(artist, 34), cX, 97)
 
-        // ── Timestamps ──
+        // ── Spectrum bar visualizer (pink → orange → cyan gradient, progress-clipped) ──
+        const barCount = 52
+        const barBtm = 154
+        const barZoneH = 40
+        const bW = Math.max(1, Math.floor(cW / barCount) - 1)
+        const phase = (anim.frame * 0.055) % (Math.PI * 2)
+        for (let i = 0; i < barCount; i++) {
+          const t = i / (barCount - 1)
+          const rawH = 0.36 + 0.30 * Math.sin(t * Math.PI * 4.1 + phase)
+                           + 0.20 * Math.sin(t * Math.PI * 9.3 + phase * 1.7)
+                           + 0.12 * Math.sin(t * Math.PI * 17.5 + phase * 0.8)
+          const h = Math.max(3, barZoneH * Math.min(1, Math.max(0, rawH)))
+          const bX = cX + i * (cW / barCount)
+          const bY = barBtm - h
+          const isFilled = t <= pct
+          const grad = ctx.createLinearGradient(bX, bY, bX, barBtm)
+          if (isFilled) {
+            grad.addColorStop(0, '#ff2775')
+            grad.addColorStop(0.48, '#f97316')
+            grad.addColorStop(1, '#06b6d4')
+          } else {
+            grad.addColorStop(0, 'rgba(0,0,0,0.14)')
+            grad.addColorStop(1, 'rgba(0,0,0,0.06)')
+          }
+          ctx.fillStyle = grad
+          if (ctx.roundRect) {
+            ctx.beginPath(); ctx.roundRect(bX, bY, bW, h, 1.5); ctx.fill()
+          } else {
+            ctx.fillRect(bX, bY, bW, h)
+          }
+        }
+
+        // Timestamps below bars
         ctx.fillStyle = 'rgba(0,0,0,0.35)'
         ctx.font = '8px system-ui'
-        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX, 112)
-        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR, 112)
-
-        // ── Wavy animated progress bar ──
-        const wY = 120, amp = 3.5, wf = 0.12
-        const phase = (anim.frame * 0.07) % (Math.PI * 2)
-        // Background wave (dim)
-        ctx.beginPath()
-        for (let x = 0; x <= cW; x++) {
-          const y = wY + Math.sin(x * wf + phase) * amp
-          x === 0 ? ctx.moveTo(cX + x, y) : ctx.lineTo(cX + x, y)
-        }
-        ctx.strokeStyle = 'rgba(0,0,0,0.1)'
-        ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke()
-        // Filled orange wave up to progress
-        if (pct > 0) {
-          ctx.save()
-          ctx.beginPath(); ctx.rect(cX, wY - amp - 4, cW * pct, (amp + 4) * 2); ctx.clip()
-          ctx.beginPath()
-          for (let x = 0; x <= cW; x++) {
-            const y = wY + Math.sin(x * wf + phase) * amp
-            x === 0 ? ctx.moveTo(cX + x, y) : ctx.lineTo(cX + x, y)
-          }
-          ctx.strokeStyle = '#f97316'
-          ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke()
-          ctx.restore()
-          // Dot on wave
-          const dX = cX + cW * pct
-          const dY = wY + Math.sin(cW * pct * wf + phase) * amp
-          ctx.beginPath(); ctx.arc(dX, dY, 4, 0, Math.PI * 2)
-          ctx.fillStyle = '#f97316'; ctx.fill()
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke()
-        }
+        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX, barBtm + 11)
+        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR, barBtm + 11)
 
         // ── Playing indicator — pulsing orange dot top-right ──
         if (playing) {
