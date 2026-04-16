@@ -1890,31 +1890,35 @@ export default function RoomPage() {
         }
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
-        // ── ROW 3: Lyrics — 2 lines (active + next) ──
-        // Bars end at y=71. Gap of 19px → active lyric at y=90, next at y=118.
+        // ── ROW 3: Lyrics — 3 lines (active + next 2) ──
+        // Bars end at y=71. Gap of 19px → active lyric at y=90, next at y=112, y=134.
         const lyrSnap   = lyricsRef.current
         const hasSync   = lyrSnap?.synced && lyrSnap?.lines?.length > 0
         const plainText = (!hasSync && lyrSnap?.plain) ? lyrSnap.plain : null
         const hasPlain  = !!plainText && plainText.trim().length > 10
-        const ly        = [90, 118]             // active + next, 28px spacing
+        const ly        = [90, 112, 134]        // active + next 2, 22px spacing
         const dimLyric  = 'rgba(255,255,255,0.38)'
         if (hasSync) {
           const lines     = lyrSnap.lines
           const activeIdx = lines.reduce((best, line, i) => line.time <= ct ? i : best, 0)
           ctx.fillStyle = accentRGB; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'left'
           ctx.fillText(truncW(lines[activeIdx].text, pW), pX, ly[0])
-          if (activeIdx + 1 < lines.length) {
-            ctx.fillStyle = dimLyric; ctx.font = '11px system-ui'; ctx.textAlign = 'left'
-            ctx.fillText(truncW(lines[activeIdx + 1].text, pW), pX, ly[1])
+          for (let n = 1; n <= 2; n++) {
+            if (activeIdx + n < lines.length) {
+              ctx.fillStyle = dimLyric; ctx.font = '11px system-ui'; ctx.textAlign = 'left'
+              ctx.fillText(truncW(lines[activeIdx + n].text, pW), pX, ly[n])
+            }
           }
         } else if (hasPlain) {
           const pLines = plainText.split('\n').map(l => l.trim()).filter(l => l.length > 0)
           const pIdx   = dur > 5 ? Math.min(pLines.length - 1, Math.floor((ct / dur) * pLines.length)) : 0
           ctx.fillStyle = accentRGB; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'left'
           ctx.fillText(truncW(pLines[pIdx] || '', pW), pX, ly[0])
-          if (pLines[pIdx + 1]) {
-            ctx.fillStyle = dimLyric; ctx.font = '11px system-ui'; ctx.textAlign = 'left'
-            ctx.fillText(truncW(pLines[pIdx + 1], pW), pX, ly[1])
+          for (let n = 1; n <= 2; n++) {
+            if (pLines[pIdx + n]) {
+              ctx.fillStyle = dimLyric; ctx.font = '11px system-ui'; ctx.textAlign = 'left'
+              ctx.fillText(truncW(pLines[pIdx + n], pW), pX, ly[n])
+            }
           }
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.38)'
