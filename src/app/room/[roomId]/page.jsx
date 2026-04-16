@@ -1773,8 +1773,8 @@ export default function RoomPage() {
         ctx.fillStyle = 'rgba(0,0,0,0.48)'
         ctx.fillRect(0, 0, W, H)
 
-        // ── Left: album art — full color, rounded left corners ──
-        const artW = H
+        // ── Left: album art — smaller, full color, rounded left corners ──
+        const artW = 90
         if (anim.thumbImg) {
           ctx.save()
           if (ctx.roundRect) {
@@ -1785,16 +1785,16 @@ export default function RoomPage() {
           ctx.drawImage(anim.thumbImg, 0, 0, artW, H)
           ctx.restore()
           // Fade edge into content panel
-          const fade = ctx.createLinearGradient(artW - 32, 0, artW, 0)
+          const fade = ctx.createLinearGradient(artW - 24, 0, artW, 0)
           fade.addColorStop(0, 'rgba(0,0,0,0)')
           fade.addColorStop(1, 'rgba(0,0,0,0.72)')
           ctx.fillStyle = fade
-          ctx.fillRect(artW - 32, 0, 32, H)
+          ctx.fillRect(artW - 24, 0, 24, H)
         } else {
           ctx.fillStyle = '#1a1a2e'
           ctx.fillRect(0, 0, artW, H)
           ctx.fillStyle = accentRGB
-          ctx.font = '52px system-ui'
+          ctx.font = '30px system-ui'
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
           ctx.fillText('♫', artW / 2, H / 2)
         }
