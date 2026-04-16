@@ -1890,7 +1890,17 @@ export default function RoomPage() {
       if ('mediaSession' in navigator) {
         try {
           navigator.mediaSession.setActionHandler('play', () => {
-            try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.playVideo?.() } catch {}
+            // Fire immediately, then retry — Chrome blocks playVideo() on first call when tab is hidden
+            const tryPlay = () => {
+              try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.setVolume?.(100); ytPlayerRef.current?.playVideo?.() } catch {}
+              try {
+                const iframe = document.querySelector('iframe[src*="youtube"]')
+                if (iframe?.contentWindow)
+                  iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+              } catch {}
+            }
+            tryPlay()
+            ;[300, 700, 1400, 2500].forEach(d => setTimeout(tryPlay, d))
             import('firebase/firestore').then(({ updateDoc, doc }) =>
               import('@/lib/firebase').then(({ db }) =>
                 updateDoc(doc(db, 'rooms', roomId), { isPlaying: true }).catch(() => {})
