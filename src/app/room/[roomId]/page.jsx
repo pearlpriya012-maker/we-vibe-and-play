@@ -978,6 +978,8 @@ export default function RoomPage() {
   const keepAliveCtxRef = useRef(null)      // Web Audio context — keeps tab classified as active audio in background
   const keepAliveAudioRef = useRef(null)    // <audio> element driven by the keepalive stream
   const bgWatchdogRef = useRef(null)        // interval that fights YouTube auto-pause while tab is hidden
+  const pipLyricsRef = useRef(true)          // whether to show lyrics in canvas PiP (toggled by user)
+  const [pipLyricsOn, setPipLyricsOn] = useState(true) // mirrors pipLyricsRef for button UI
   const lastSkipAtRef = useRef(0)           // timestamp of last skipToNext call — prevents double-skip when watchdog + handleStateChange both fire
   const pipWindowRef = useRef(null)         // Document Picture-in-Picture floating mini-player window
   const pipSyncRef = useRef(null)           // interval that keeps pip DOM in sync with player state
@@ -1907,9 +1909,11 @@ export default function RoomPage() {
         }
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
-        // ── ROW 3: Lyrics — 3 lines (active + next 2) ──
+        // ── ROW 3: Lyrics — 3 lines (active + next 2) — only if user has enabled them ──
         // Bars end at y=71. Gap of 19px → active lyric at y=90, next at y=112, y=134.
-        const lyrSnap   = lyricsRef.current
+        if (!pipLyricsRef.current) { /* lyrics hidden by user preference */ }
+        else
+        { const lyrSnap   = lyricsRef.current
         const hasSync   = lyrSnap?.synced && lyrSnap?.lines?.length > 0
         const plainText = (!hasSync && lyrSnap?.plain) ? lyrSnap.plain : null
         const hasPlain  = !!plainText && plainText.trim().length > 10
@@ -1941,7 +1945,7 @@ export default function RoomPage() {
           ctx.fillStyle = 'rgba(255,255,255,0.38)'
           ctx.font = '11px system-ui'; ctx.textAlign = 'left'
           ctx.fillText('No lyrics available', pX, ly[0])
-        }
+        } }
 
         // ── Playing indicator — pulsing dot top-right ──
         if (playing) {
@@ -2655,7 +2659,9 @@ export default function RoomPage() {
               <button onClick={() => skipToNext(roomId)} style={{ width: compact ? 36 : 40, height: compact ? 36 : 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⏭</button>
               {volumeWidget}
               {!compact && <button onClick={openMobilePip} title="Pop out mini player" style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⧉</button>}
+              {!compact && <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.85rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>🎤</button>}
               {compact && <button onClick={openMobilePip} title="Mini player" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⧉</button>}
+              {compact && <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.85rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎤</button>}
               {compact && <button onClick={() => setMobileTab('lyrics')} title="Lyrics" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid rgba(249,115,22,0.4)', cursor: 'pointer', fontSize: '0.85rem', color: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>📝</button>}
             </div>
           ) : (
@@ -2663,7 +2669,9 @@ export default function RoomPage() {
               <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</div>
               {volumeWidget}
               {!compact && <button onClick={openMobilePip} title="Pop out mini player" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⧉</button>}
+              {!compact && <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.85rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎤</button>}
               {compact && <button onClick={openMobilePip} title="Mini player" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⧉</button>}
+              {compact && <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.85rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎤</button>}
               {compact && <button onClick={() => setMobileTab('lyrics')} title="Lyrics" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid rgba(249,115,22,0.4)', cursor: 'pointer', fontSize: '0.85rem', color: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>📝</button>}
             </div>
           )}
@@ -3215,12 +3223,14 @@ export default function RoomPage() {
                         onMouseEnter={e => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#f97316' }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                       >⧉</button>
+                      <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.75rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>🎤</button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 12, flexShrink: 0 }}>
                       <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</span>
                       {volumeWidget}
                       <button onClick={openMobilePip} title="Pop out mini player" style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⧉</button>
+                      <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.75rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎤</button>
                     </div>
                   )}
                   {/* Lyrics — fills remaining height */}
@@ -3259,6 +3269,7 @@ export default function RoomPage() {
                         onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)' }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                       >⧉</button>
+                      <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.85rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>🎤</button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
@@ -3268,6 +3279,7 @@ export default function RoomPage() {
                         onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)' }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                       >⧉</button>
+                      <button onClick={() => { pipLyricsRef.current = !pipLyricsRef.current; setPipLyricsOn(pipLyricsRef.current) }} title={pipLyricsOn ? 'Hide PiP lyrics' : 'Show PiP lyrics'} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.85rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>🎤</button>
                     </div>
                   )}
                 </div>
