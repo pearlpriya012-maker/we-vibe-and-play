@@ -1772,11 +1772,15 @@ export default function RoomPage() {
         ctx.fillRect(0, 0, W, H)
 
         // ─────────────────────────────────────────────────────
-        // Layout: [album + eq bars] → title → divider → lyrics
+        // ─────────────────────────────────────────────────────
+        // Layout:
+        //   Row 1: Album (left) | Title + Artist (right)  y=5..45
+        //   Row 2: Full-width equalizer bars               y=50..62
+        //   Row 3: Lyrics (4 lines, no divider)            y=70..130
         // pX=10 left pad, pR=390 right pad
         // ─────────────────────────────────────────────────────
         const pX = 10, pR = W - 10, pW = pR - pX
-        // Width-based truncation — never cuts mid-word before canvas edge
+        // Width-based truncation — never cuts before canvas edge
         const truncLyric = (s, maxW) => {
           if (ctx.measureText(s).width <= maxW) return s
           let t = s
@@ -1785,14 +1789,11 @@ export default function RoomPage() {
         }
         ctx.textBaseline = 'alphabetic'
 
-        // ── ROW 1 (top): Album art (left) + Neon equalizer bars (right) ──
+        // ── ROW 1: Album art (left) + Title / Artist (right) ──
         const sqSize = 40
-        const sqX    = pX, sqY = 5
-        const eqX    = sqX + sqSize + 6   // bars start at x=56
-        const eqR    = pR                  // bars end at x=390
-        const eqW    = eqR - eqX          // = 334
+        const sqX = pX, sqY = 5
+        const txX = sqX + sqSize + 8   // text starts at x=58
 
-        // Album square
         if (anim.thumbImg) {
           ctx.save()
           if (ctx.roundRect) {
@@ -1820,13 +1821,23 @@ export default function RoomPage() {
           ctx.textBaseline = 'alphabetic'
         }
 
-        // Equalizer bars: 1px wide, 2px gap, album-accent color synced
-        const eqCY    = sqY + sqSize / 2   // vertical center = 25
-        const eqMaxH  = 13                 // max half-height
-        const now_s   = Date.now() * 0.001
-        const eqBW    = 1                  // 1px ultra-thin
-        const eqGap   = 2                  // wider gap → bars look even finer
-        const eqCount = Math.floor((eqW + eqGap) / (eqBW + eqGap))
+        const title  = track?.title || 'Nothing playing'
+        const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
+        const txW    = pR - txX   // available width for text
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 11.5px system-ui'; ctx.textAlign = 'left'
+        ctx.fillText(truncLyric(title, txW), txX, 22)
+        ctx.fillStyle = 'rgba(255,255,255,0.52)'
+        ctx.font = '9.5px system-ui'
+        ctx.fillText(truncLyric(artist, txW), txX, 36)
+
+        // ── ROW 2: Full-width equalizer bars ──
+        const eqCY   = 54          // vertical center (half of 170 = 85, but we want it at row 2)
+        const eqMaxH = 8           // shorter — compact row
+        const now_s  = Date.now() * 0.001
+        const eqBW   = 1           // 1px ultra-thin
+        const eqGap  = 2           // 2px gap
+        const eqCount = Math.floor((pW + eqGap) / (eqBW + eqGap))
 
         for (let i = 0; i < eqCount; i++) {
           const t    = i / (eqCount - 1)
@@ -1836,19 +1847,17 @@ export default function RoomPage() {
           const p3   = now_s * 1.65 + t * Math.PI * 3.1 + i * 0.61
           const rawH = 0.45 + 0.30 * Math.sin(p1) + 0.17 * Math.sin(p2) + 0.08 * Math.sin(p3)
           const h    = Math.max(1, eqMaxH * env * Math.min(1, Math.max(0, rawH)))
-          const bX   = eqX + i * (eqBW + eqGap)
+          const bX   = pX + i * (eqBW + eqGap)
 
-          // Album-accent-synced color: center bars brighten toward white, edges stay accent
-          const distFromCenter = Math.abs(t - 0.5) * 2   // 0=center, 1=edges
-          const centerFactor   = 1 - distFromCenter        // 1=center, 0=edges
-          const whiteMix = centerFactor * 0.55
-          const cr = Math.min(255, Math.round(ar + (255 - ar) * whiteMix))
-          const cg = Math.min(255, Math.round(ag + (255 - ag) * whiteMix))
-          const cb = Math.min(255, Math.round(ab + (255 - ab) * whiteMix))
-          const glowBlur = 5 + centerFactor * 9      // 5 at edges, 14 at center
+          // Album-accent-synced: center brightens toward white, edges = accent
+          const cf       = 1 - Math.abs(t - 0.5) * 2   // 1=center, 0=edges
+          const wm       = cf * 0.55
+          const cr       = Math.min(255, Math.round(ar + (255 - ar) * wm))
+          const cg       = Math.min(255, Math.round(ag + (255 - ag) * wm))
+          const cb       = Math.min(255, Math.round(ab + (255 - ab) * wm))
 
           ctx.shadowColor = `rgb(${cr},${cg},${cb})`
-          ctx.shadowBlur  = glowBlur
+          ctx.shadowBlur  = 4 + cf * 8
           ctx.fillStyle   = `rgb(${cr},${cg},${cb})`
           if (ctx.roundRect) {
             ctx.beginPath(); ctx.roundRect(bX, eqCY - h, eqBW, h * 2, 0.5); ctx.fill()
@@ -1858,41 +1867,24 @@ export default function RoomPage() {
         }
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
-        // ── ROW 2: Song title + artist ──
-        const title  = track?.title || 'Nothing playing'
-        const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left'
-        ctx.fillText(truncLyric(title, pW), pX, 57)
-        ctx.fillStyle = 'rgba(255,255,255,0.50)'
-        ctx.font = '9px system-ui'
-        ctx.fillText(truncLyric(artist, pW), pX, 68)
-
-        // ── Divider ──
-        ctx.fillStyle = `rgba(${ar},${ag},${ab},0.30)`
-        ctx.fillRect(pX, 74, pW, 1)
-
-        // ── ROW 3: Lyrics — 4 lines (1 prev + active + 2 next) ──
+        // ── ROW 3: Lyrics — 4 lines (1 prev + active + 2 next), no divider ──
         const lyrSnap   = lyricsRef.current
         const hasSync   = lyrSnap?.synced && lyrSnap?.lines?.length > 0
         const plainText = (!hasSync && lyrSnap?.plain) ? lyrSnap.plain : null
         const hasPlain  = !!plainText && plainText.trim().length > 10
-        // y positions: 86, 101, 116, 131  (15px line spacing)
-        const ly = [86, 101, 116, 131]
+        // 4 lyric lines, 15px spacing, starting at y=70
+        const ly = [70, 85, 100, 115]
         if (hasSync) {
           const lines     = lyrSnap.lines
           const activeIdx = lines.reduce((best, line, i) => line.time <= ct ? i : best, 0)
-          // prev line
           if (activeIdx > 0) {
             ctx.fillStyle = 'rgba(255,255,255,0.65)'
             ctx.font = '10px system-ui'; ctx.textAlign = 'left'
             ctx.fillText(truncLyric(lines[activeIdx - 1].text, pW), pX, ly[0])
           }
-          // active line
           ctx.fillStyle = accentRGB
           ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left'
           ctx.fillText(truncLyric(lines[activeIdx].text, pW), pX, ly[1])
-          // next 2 lines
           for (let n = 1; n <= 2; n++) {
             if (activeIdx + n < lines.length) {
               ctx.fillStyle = 'rgba(255,255,255,0.65)'
