@@ -32,6 +32,37 @@ function pickBest(results) {
   return results.find(r => r.syncedLyrics) || results[0] || null
 }
 
+// Remove YouTube-specific noise from titles so lrclib can match them
+function normalizeTitle(raw) {
+  return raw
+    // Strip non-ASCII (Telugu, Hindi, etc.)
+    .replace(/[^\x00-\x7F]+/g, ' ')
+    // Remove bracketed/parenthesized junk: (Official Video), [4K], (feat. X), (Lyric Video), etc.
+    .replace(/\((?:official|lyrics?|lyric|video|audio|mv|hd|4k|ft\.?|feat\.?|with|prod\.?)[^)]*\)/gi, '')
+    .replace(/\[(?:official|lyrics?|lyric|video|audio|mv|hd|4k|ft\.?|feat\.?|with|prod\.?)[^\]]*\]/gi, '')
+    // Remove trailing separators and labels: "| Sony Music", "- Topic", "· Album", etc.
+    .replace(/[\|\·•—–]\s*.+$/g, '')
+    .replace(/\s*-\s*(official|lyrics?|audio|video|hd|4k|topic|music|records?|entertainment)\s*$/gi, '')
+    // Collapse whitespace
+    .replace(/\s+/g, ' ').trim()
+}
+
+function normalizeArtist(raw) {
+  return raw
+    .replace(/[^\x00-\x7F]+/g, ' ')
+    .replace(/\s*-\s*Topic\s*$/i, '')
+    .replace(/\s+/g, ' ').trim()
+}
+
+// Search lrclib with a given title+artist, return best Latin result
+async function searchLrclib(title, artist) {
+  const url = `https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`
+  const r = await fetch(url, { headers: { 'Lrclib-Client': 'WeVibe/1.0' } })
+  if (!r.ok) return null
+  const results = await r.json()
+  return pickBest(results)
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const title = searchParams.get('title') || ''
@@ -40,32 +71,37 @@ export async function GET(request) {
 
   if (!title) return NextResponse.json({ lines: [], plain: null, synced: false })
 
-  // Strip non-ASCII from title/artist for better lrclib matching
-  // (Telugu/Hindi YouTube titles won't match English lrclib entries)
-  const cleanTitle  = title.replace(/[^\x00-\x7F]+/g, ' ').replace(/\s+/g, ' ').trim()
-  const cleanArtist = artist.replace(/[^\x00-\x7F]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const cleanTitle  = normalizeTitle(title)
+  const cleanArtist = normalizeArtist(artist)
 
   try {
-    // 1. Exact match with duration
-    let res = await fetch(
+    let data = null
+
+    // 1. Exact match (title + artist + duration) — fastest, highest accuracy
+    const res = await fetch(
       `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}&duration=${Math.round(duration)}`,
       { headers: { 'Lrclib-Client': 'WeVibe/1.0' }, next: { revalidate: 3600 } }
     )
-    let data = res.ok ? await res.json() : null
+    const exact = res.ok ? await res.json() : null
+    if (exact && (exact.syncedLyrics || exact.plainLyrics) && isLatin(exact.syncedLyrics || exact.plainLyrics)) {
+      data = exact
+    }
 
-    // 2. If exact match has no lyrics or non-Latin lyrics, search for better result
-    const exactOk = data && (data.syncedLyrics || data.plainLyrics) &&
-                    isLatin(data.syncedLyrics || data.plainLyrics)
-    if (!exactOk) {
-      const sr = await fetch(
-        `https://lrclib.net/api/search?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`,
-        { headers: { 'Lrclib-Client': 'WeVibe/1.0' } }
-      )
-      if (sr.ok) {
-        const results = await sr.json()
-        const best = pickBest(results)
-        if (best) data = best
-      }
+    // 2. Search with cleaned title + artist
+    if (!data) {
+      data = await searchLrclib(cleanTitle, cleanArtist)
+    }
+
+    // 3. Search with title only (no artist) — catches mismatched artist names
+    if (!data) {
+      data = await searchLrclib(cleanTitle, '')
+    }
+
+    // 4. Further strip the title: remove everything after " - " (e.g. "Song Name - Artist")
+    if (!data && cleanTitle.includes(' - ')) {
+      const shortTitle = cleanTitle.split(' - ')[0].trim()
+      data = await searchLrclib(shortTitle, cleanArtist)
+      if (!data) data = await searchLrclib(shortTitle, '')
     }
 
     if (!data) return NextResponse.json({ lines: [], plain: null, synced: false })
