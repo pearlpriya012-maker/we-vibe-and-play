@@ -864,6 +864,66 @@ function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
   )
 }
 
+// ─── LYRICS PANEL ───
+function LyricsPanel({ lines, plain, synced, loading, currentTime }) {
+  const lineRefs = useRef([])
+  const activeIdx =
+    synced && lines.length
+      ? lines.reduce((best, line, i) => (line.time <= currentTime ? i : best), 0)
+      : -1
+
+  useEffect(() => {
+    if (activeIdx >= 0 && lineRefs.current[activeIdx]) {
+      lineRefs.current[activeIdx].scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [activeIdx])
+
+  if (loading) return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+      <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Loading lyrics…
+    </div>
+  )
+
+  if (synced && lines.length) return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 12px', display: 'flex', flexDirection: 'column', gap: 2, scrollbarWidth: 'none' }}>
+      <style>{`#lyr-scroll::-webkit-scrollbar{display:none}`}</style>
+      {lines.map((line, i) => (
+        <div
+          key={i}
+          ref={el => { lineRefs.current[i] = el }}
+          style={{
+            textAlign: 'center',
+            padding: '7px 10px',
+            borderRadius: 8,
+            fontSize: i === activeIdx ? '1.05rem' : '0.875rem',
+            fontWeight: i === activeIdx ? 700 : 400,
+            color: i === activeIdx ? '#ffffff' : 'rgba(255,255,255,0.28)',
+            background: i === activeIdx ? 'rgba(0,255,136,0.07)' : 'transparent',
+            transition: 'all 0.35s ease',
+            lineHeight: 1.6,
+          }}
+        >
+          {line.text}
+        </div>
+      ))}
+    </div>
+  )
+
+  if (plain) return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', color: 'var(--text-dim)', fontSize: '0.85rem', lineHeight: 1.85, whiteSpace: 'pre-line', textAlign: 'center', scrollbarWidth: 'none' }}>
+      <div style={{ marginBottom: 10, fontSize: '0.68rem', fontStyle: 'italic', opacity: 0.5 }}>⚠ Timed sync not available for this track</div>
+      {plain}
+    </div>
+  )
+
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, color: 'var(--text-dim)' }}>
+      <div style={{ fontSize: '2.5rem' }}>🎵</div>
+      <div style={{ fontSize: '0.875rem' }}>No lyrics found for this track</div>
+    </div>
+  )
+}
+
 // ─── MAIN ROOM ───
 export default function RoomPage() {
   const { roomId } = useParams()
@@ -920,6 +980,7 @@ export default function RoomPage() {
   const [watchUrlInput, setWatchUrlInput] = useState('')
   const [watchCrop, setWatchCrop] = useState(false)
   const [ytToken, setYtToken] = useState(user?.youtubeAccessToken || null)
+  const [lyrics, setLyrics] = useState({ lines: [], plain: null, synced: false, loading: false })
 
   const isHost = room?.hostId === user?.uid
   // canAdd = can add songs to queue
@@ -947,6 +1008,24 @@ export default function RoomPage() {
     })
     return () => unsub?.()
   }, [user?.uid])
+
+  // ─── Fetch synced lyrics when track changes ───
+  useEffect(() => {
+    if (!room?.currentTrack?.videoId) {
+      setLyrics({ lines: [], plain: null, synced: false, loading: false })
+      return
+    }
+    const track = room.currentTrack
+    const title = track.title || ''
+    const artist = (track.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
+    setLyrics(prev => ({ ...prev, loading: true }))
+    fetch(
+      `/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&duration=${Math.round(duration || 0)}`
+    )
+      .then(r => r.json())
+      .then(data => setLyrics({ lines: data.lines || [], plain: data.plain || null, synced: data.synced || false, loading: false }))
+      .catch(() => setLyrics({ lines: [], plain: null, synced: false, loading: false }))
+  }, [room?.currentTrack?.videoId])
 
   // ─── Refresh expired YouTube access token using stored refresh token ───
   async function refreshYtToken() {
@@ -2567,7 +2646,7 @@ export default function RoomPage() {
           <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(13,13,13,0.8)', overflowX: 'auto', scrollbarWidth: 'none' }}>
             <style>{`#mob-tabs::-webkit-scrollbar{display:none}`}</style>
             <div id="mob-tabs" style={{ display: 'flex', width: '100%' }}>
-              {[['search','🔍','Search'],['queue','🎵','Queue'],['playlists','📋','Playlist'],['aibond','🐻‍❄️','AI Bond'],['chat','💬','Chat']].map(([id, icon, label]) => {
+              {[['search','🔍','Search'],['queue','🎵','Queue'],['playlists','📋','Playlist'],['aibond','🐻‍❄️','AI Bond'],['chat','💬','Chat'],['lyrics','📝','Lyrics']].map(([id, icon, label]) => {
                 const unread = id === 'chat' && floatMsg
                 return (
                   <button key={id} onClick={() => setMobileTab(id)}
@@ -2591,6 +2670,9 @@ export default function RoomPage() {
             </div>
             <div style={{ display: mobileTab === 'chat' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <ChatPanel roomId={roomId} messages={messages} currentUser={user} />
+            </div>
+            <div style={{ display: mobileTab === 'lyrics' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <LyricsPanel lines={lyrics.lines} plain={lyrics.plain} synced={lyrics.synced} loading={lyrics.loading} currentTime={currentTime} />
             </div>
           </div>
 
@@ -2893,7 +2975,7 @@ export default function RoomPage() {
         {/* Right */}
         <div style={{ borderLeft: videoFocus ? 'none' : '1px solid var(--border)', background: 'rgba(13,13,13,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <div className="tab-bar">
-            {[['chat', '💬 Chat'], ['participants', '👥 People'], ['ai', '🐻‍❄️ AI Bond']].map(([id, label]) => (
+            {[['chat', '💬 Chat'], ['participants', '👥 People'], ['ai', '🐻‍❄️ AI Bond'], ['lyrics', '📝 Lyrics']].map(([id, label]) => (
               <button key={id} className={`tab-btn ${rightTab === id ? 'active' : ''}`} onClick={() => setRightTab(id)} style={{ fontSize: '0.7rem' }}>{label}</button>
             ))}
           </div>
@@ -2901,6 +2983,7 @@ export default function RoomPage() {
             {rightTab === 'chat' && <ChatPanel roomId={roomId} messages={messages} currentUser={user} />}
             {rightTab === 'participants' && <ParticipantsPanel room={room} currentUser={user} isHost={isHost} roomId={roomId} />}
             {rightTab === 'ai' && <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={ytToken} />}
+            {rightTab === 'lyrics' && <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}><LyricsPanel lines={lyrics.lines} plain={lyrics.plain} synced={lyrics.synced} loading={lyrics.loading} currentTime={currentTime} /></div>}
           </div>
         </div>
       </div>
