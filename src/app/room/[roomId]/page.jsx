@@ -1773,27 +1773,38 @@ export default function RoomPage() {
 
         // ─────────────────────────────────────────────────────
         // ─────────────────────────────────────────────────────
-        // Layout:
-        //   Row 1: Album (left) | Title + Artist (right)  y=5..45
-        //   Row 2: Full-width equalizer bars               y=50..62
-        //   Row 3: Lyrics (4 lines, no divider)            y=70..130
-        // pX=10 left pad, pR=390 right pad
+        // Layout (canvas 400×170):
+        //   Row 1 y=5..46:  Album 40×40 (left) | Title (wraps 2 lines) + Artist (right)
+        //   Row 2 y=47..63: Full-width eq bars  (eqCY=55, maxH=12)
+        //   Row 3 y=68..:   5-line lyrics block (no divider)
         // ─────────────────────────────────────────────────────
         const pX = 10, pR = W - 10, pW = pR - pX
-        // Width-based truncation — never cuts before canvas edge
-        const truncLyric = (s, maxW) => {
+
+        // Width-aware truncation
+        const truncW = (s, maxW) => {
           if (ctx.measureText(s).width <= maxW) return s
           let t = s
           while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1)
           return t + '…'
         }
+        // Word-wrap to at most 2 lines; 2nd line is truncated if still too wide
+        const wrapTitle = (s, maxW) => {
+          if (ctx.measureText(s).width <= maxW) return [s]
+          const words = s.split(' ')
+          let line1 = '', line2 = ''
+          for (let i = 0; i < words.length; i++) {
+            const test = line1 ? line1 + ' ' + words[i] : words[i]
+            if (!line1 || ctx.measureText(test).width <= maxW) { line1 = test }
+            else { line2 = words.slice(i).join(' '); break }
+          }
+          if (!line1) line1 = truncW(s, maxW)
+          if (line2 && ctx.measureText(line2).width > maxW) line2 = truncW(line2, maxW)
+          return line2 ? [line1, line2] : [line1]
+        }
         ctx.textBaseline = 'alphabetic'
 
-        // ── ROW 1: Album art (left) + Title / Artist (right) ──
-        const sqSize = 40
-        const sqX = pX, sqY = 5
-        const txX = sqX + sqSize + 8   // text starts at x=58
-
+        // ── ROW 1: Album art (left) ──
+        const sqSize = 40, sqX = pX, sqY = 5
         if (anim.thumbImg) {
           ctx.save()
           if (ctx.roundRect) {
@@ -1808,7 +1819,7 @@ export default function RoomPage() {
           else              { sh = iw; sy = (ih - sh) / 2 }
           ctx.drawImage(anim.thumbImg, sx, sy, sw, sh, sqX, sqY, sqSize, sqSize)
           ctx.restore()
-          ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.6)`
+          ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.55)`
           ctx.lineWidth = 1
           if (ctx.roundRect) {
             ctx.beginPath(); ctx.roundRect(sqX, sqY, sqSize, sqSize, 5); ctx.stroke()
@@ -1821,22 +1832,34 @@ export default function RoomPage() {
           ctx.textBaseline = 'alphabetic'
         }
 
+        // ── ROW 1: Title + Artist (right of album) ──
         const title  = track?.title || 'Nothing playing'
         const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
-        const txW    = pR - txX   // available width for text
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 11.5px system-ui'; ctx.textAlign = 'left'
-        ctx.fillText(truncLyric(title, txW), txX, 22)
-        ctx.fillStyle = 'rgba(255,255,255,0.52)'
-        ctx.font = '9.5px system-ui'
-        ctx.fillText(truncLyric(artist, txW), txX, 36)
+        const txX    = sqX + sqSize + 8   // x=58
+        const txW    = pR - txX           // ≈332px available
+
+        ctx.font = 'bold 11px system-ui'
+        const titleLines = wrapTitle(title, txW)
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'
+        if (titleLines.length === 1) {
+          ctx.fillText(titleLines[0], txX, 20)
+          ctx.fillStyle = 'rgba(255,255,255,0.52)'
+          ctx.font = '9px system-ui'
+          ctx.fillText(truncW(artist, txW), txX, 34)
+        } else {
+          ctx.fillText(titleLines[0], txX, 16)
+          ctx.fillText(titleLines[1], txX, 29)
+          ctx.fillStyle = 'rgba(255,255,255,0.50)'
+          ctx.font = '9px system-ui'
+          ctx.fillText(truncW(artist, txW), txX, 42)
+        }
 
         // ── ROW 2: Full-width equalizer bars ──
-        const eqCY   = 54          // vertical center (half of 170 = 85, but we want it at row 2)
-        const eqMaxH = 8           // shorter — compact row
-        const now_s  = Date.now() * 0.001
-        const eqBW   = 1           // 1px ultra-thin
-        const eqGap  = 2           // 2px gap
+        const eqCY    = 55
+        const eqMaxH  = 12
+        const now_s   = Date.now() * 0.001
+        const eqBW    = 1
+        const eqGap   = 2
         const eqCount = Math.floor((pW + eqGap) / (eqBW + eqGap))
 
         for (let i = 0; i < eqCount; i++) {
@@ -1848,16 +1871,14 @@ export default function RoomPage() {
           const rawH = 0.45 + 0.30 * Math.sin(p1) + 0.17 * Math.sin(p2) + 0.08 * Math.sin(p3)
           const h    = Math.max(1, eqMaxH * env * Math.min(1, Math.max(0, rawH)))
           const bX   = pX + i * (eqBW + eqGap)
-
-          // Album-accent-synced: center brightens toward white, edges = accent
-          const cf       = 1 - Math.abs(t - 0.5) * 2   // 1=center, 0=edges
-          const wm       = cf * 0.55
-          const cr       = Math.min(255, Math.round(ar + (255 - ar) * wm))
-          const cg       = Math.min(255, Math.round(ag + (255 - ag) * wm))
-          const cb       = Math.min(255, Math.round(ab + (255 - ab) * wm))
-
+          // Album-accent-synced: center brightens to white, edges = accent color
+          const cf   = 1 - Math.abs(t - 0.5) * 2
+          const wm   = cf * 0.6
+          const cr   = Math.min(255, Math.round(ar + (255 - ar) * wm))
+          const cg   = Math.min(255, Math.round(ag + (255 - ag) * wm))
+          const cb   = Math.min(255, Math.round(ab + (255 - ab) * wm))
           ctx.shadowColor = `rgb(${cr},${cg},${cb})`
-          ctx.shadowBlur  = 4 + cf * 8
+          ctx.shadowBlur  = 4 + cf * 9
           ctx.fillStyle   = `rgb(${cr},${cg},${cb})`
           if (ctx.roundRect) {
             ctx.beginPath(); ctx.roundRect(bX, eqCY - h, eqBW, h * 2, 0.5); ctx.fill()
@@ -1867,47 +1888,42 @@ export default function RoomPage() {
         }
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
-        // ── ROW 3: Lyrics — 4 lines (1 prev + active + 2 next), no divider ──
+        // ── ROW 3: Lyrics — 5 lines (1 prev + active + 3 next) ──
         const lyrSnap   = lyricsRef.current
         const hasSync   = lyrSnap?.synced && lyrSnap?.lines?.length > 0
         const plainText = (!hasSync && lyrSnap?.plain) ? lyrSnap.plain : null
         const hasPlain  = !!plainText && plainText.trim().length > 10
-        // 4 lyric lines, 15px spacing, starting at y=70
-        const ly = [70, 85, 100, 115]
+        // 5 lines, 16px spacing, start y=68
+        const ly = [68, 84, 100, 116, 132]
+        const dimLyric = 'rgba(255,255,255,0.65)'
         if (hasSync) {
           const lines     = lyrSnap.lines
           const activeIdx = lines.reduce((best, line, i) => line.time <= ct ? i : best, 0)
           if (activeIdx > 0) {
-            ctx.fillStyle = 'rgba(255,255,255,0.65)'
-            ctx.font = '10px system-ui'; ctx.textAlign = 'left'
-            ctx.fillText(truncLyric(lines[activeIdx - 1].text, pW), pX, ly[0])
+            ctx.fillStyle = dimLyric; ctx.font = '10px system-ui'; ctx.textAlign = 'left'
+            ctx.fillText(truncW(lines[activeIdx - 1].text, pW), pX, ly[0])
           }
-          ctx.fillStyle = accentRGB
-          ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left'
-          ctx.fillText(truncLyric(lines[activeIdx].text, pW), pX, ly[1])
-          for (let n = 1; n <= 2; n++) {
+          ctx.fillStyle = accentRGB; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left'
+          ctx.fillText(truncW(lines[activeIdx].text, pW), pX, ly[1])
+          for (let n = 1; n <= 3; n++) {
             if (activeIdx + n < lines.length) {
-              ctx.fillStyle = 'rgba(255,255,255,0.65)'
-              ctx.font = '10px system-ui'; ctx.textAlign = 'left'
-              ctx.fillText(truncLyric(lines[activeIdx + n].text, pW), pX, ly[1 + n])
+              ctx.fillStyle = dimLyric; ctx.font = '10px system-ui'; ctx.textAlign = 'left'
+              ctx.fillText(truncW(lines[activeIdx + n].text, pW), pX, ly[1 + n])
             }
           }
         } else if (hasPlain) {
           const pLines = plainText.split('\n').map(l => l.trim()).filter(l => l.length > 0)
           const pIdx   = dur > 5 ? Math.min(pLines.length - 1, Math.floor((ct / dur) * pLines.length)) : 0
           if (pIdx > 0 && pLines[pIdx - 1]) {
-            ctx.fillStyle = 'rgba(255,255,255,0.65)'
-            ctx.font = '10px system-ui'; ctx.textAlign = 'left'
-            ctx.fillText(truncLyric(pLines[pIdx - 1], pW), pX, ly[0])
+            ctx.fillStyle = dimLyric; ctx.font = '10px system-ui'; ctx.textAlign = 'left'
+            ctx.fillText(truncW(pLines[pIdx - 1], pW), pX, ly[0])
           }
-          ctx.fillStyle = accentRGB
-          ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left'
-          ctx.fillText(truncLyric(pLines[pIdx] || '', pW), pX, ly[1])
-          for (let n = 1; n <= 2; n++) {
+          ctx.fillStyle = accentRGB; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left'
+          ctx.fillText(truncW(pLines[pIdx] || '', pW), pX, ly[1])
+          for (let n = 1; n <= 3; n++) {
             if (pLines[pIdx + n]) {
-              ctx.fillStyle = 'rgba(255,255,255,0.65)'
-              ctx.font = '10px system-ui'; ctx.textAlign = 'left'
-              ctx.fillText(truncLyric(pLines[pIdx + n], pW), pX, ly[1 + n])
+              ctx.fillStyle = dimLyric; ctx.font = '10px system-ui'; ctx.textAlign = 'left'
+              ctx.fillText(truncW(pLines[pIdx + n], pW), pX, ly[1 + n])
             }
           }
         } else {
