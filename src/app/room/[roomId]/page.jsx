@@ -2864,49 +2864,49 @@ export default function RoomPage() {
 
               {musicMode ? (
                 // ── Portrait music player (reference design) + scrolling lyrics ──
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', height: '100%', overflow: 'hidden', padding: '20px 24px 0' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', height: '100%', overflow: 'hidden', padding: '12px 24px 0' }}>
                   {/* Hidden audio source */}
                   <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, overflow: 'hidden' }}>{ytPlayerEl}</div>
                   {/* Album art */}
-                  <img src={room.currentTrack.thumbnail} alt="" style={{ width: 172, height: 172, borderRadius: 18, objectFit: 'cover', flexShrink: 0, boxShadow: '0 16px 48px rgba(0,0,0,0.75)', marginBottom: 16 }} />
+                  <img src={room.currentTrack.thumbnail} alt="" style={{ width: 110, height: 110, borderRadius: 14, objectFit: 'cover', flexShrink: 0, boxShadow: '0 10px 30px rgba(0,0,0,0.7)', marginBottom: 10 }} />
                   {/* Title */}
-                  <div style={{ fontWeight: 700, fontSize: '1.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center', width: '100%', maxWidth: 380, marginBottom: 3 }}>{room.currentTrack.title}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center', width: '100%', maxWidth: 340, marginBottom: 2 }}>{room.currentTrack.title}</div>
                   {/* Artist */}
-                  <div style={{ color: 'var(--text-dim)', fontSize: '0.875rem', marginBottom: 14 }}>{(room.currentTrack.channelTitle || '').replace(/\s*-\s*Topic$/i, '')}</div>
+                  <div style={{ color: 'var(--text-dim)', fontSize: '0.78rem', marginBottom: 10 }}>{(room.currentTrack.channelTitle || '').replace(/\s*-\s*Topic$/i, '')}</div>
                   {/* Progress */}
-                  <div style={{ width: '100%', maxWidth: 380, marginBottom: 14, flexShrink: 0 }}>
+                  <div style={{ width: '100%', maxWidth: 340, marginBottom: 10, flexShrink: 0 }}>
                     <ProgressBar currentTime={currentTime} duration={duration} isHost={isHost} canControl={canControl} onSeek={handleSeek} />
                   </div>
                   {/* Controls */}
                   {canControl ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center', marginBottom: 16, flexShrink: 0 }}>
-                      <button style={{ background: 'none', border: 'none', cursor: 'default', fontSize: '1.25rem', color: 'rgba(255,255,255,0.25)', padding: 4, lineHeight: 1 }}>♥</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center', marginBottom: 12, flexShrink: 0 }}>
+                      <button style={{ background: 'none', border: 'none', cursor: 'default', fontSize: '1rem', color: 'rgba(255,255,255,0.25)', padding: 2, lineHeight: 1 }}>♥</button>
                       {canFullControl && (
-                        <button onClick={handlePreviousTrack} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
+                        <button onClick={handlePreviousTrack} style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
                           onMouseEnter={e => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#f97316' }}
                           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                         >⏮</button>
                       )}
-                      <button onClick={handlePlayPause} style={{ width: 56, height: 56, borderRadius: '50%', background: '#f97316', border: 'none', cursor: 'pointer', fontSize: '1.3rem', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 28px rgba(249,115,22,0.55)', transition: 'transform 0.15s', flexShrink: 0 }}
+                      <button onClick={handlePlayPause} style={{ width: 46, height: 46, borderRadius: '50%', background: '#f97316', border: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(249,115,22,0.5)', transition: 'transform 0.15s', flexShrink: 0 }}
                         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
                         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                       >{room.isPlaying ? '⏸' : '▶'}</button>
-                      <button onClick={() => skipToNext(roomId)} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
+                      <button onClick={() => skipToNext(roomId)} style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#f97316' }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                       >⏭</button>
-                      <button style={{ background: 'none', border: 'none', cursor: 'default', fontSize: '1.1rem', color: 'rgba(255,255,255,0.25)', padding: 4, lineHeight: 1 }}>⇄</button>
+                      <button style={{ background: 'none', border: 'none', cursor: 'default', fontSize: '0.95rem', color: 'rgba(255,255,255,0.25)', padding: 2, lineHeight: 1 }}>⇄</button>
                       {volumeWidget}
-                      <button onClick={openMobilePip} title="Pop out mini player" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
+                      <button onClick={openMobilePip} title="Pop out mini player" style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#f97316' }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                       >⧉</button>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 16, flexShrink: 0 }}>
-                      <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 12, flexShrink: 0 }}>
+                      <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</span>
                       {volumeWidget}
-                      <button onClick={openMobilePip} title="Pop out mini player" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⧉</button>
+                      <button onClick={openMobilePip} title="Pop out mini player" style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⧉</button>
                     </div>
                   )}
                   {/* Lyrics — fills remaining height */}
