@@ -1861,53 +1861,68 @@ export default function RoomPage() {
           ctx.textBaseline = 'alphabetic'
         }
 
-        // ── Wave-line visualizer (beside album, in bottom zone) ──
-        const waveY    = sqY + sqSize / 2   // vertically centered with album
-        const waveHalf = 20
-        const now_s = Date.now() * 0.001
+        // ── Neon equalizer bars (reference: tall vertical lines, blue/purple/green glow) ──
+        const eqCY     = sqY + sqSize / 2   // center Y — vertically aligned with album square
+        const eqMaxH   = sqSize / 2 - 1     // max half-height = 25px (fills album height)
+        const now_s    = Date.now() * 0.001
+        const eqCount  = 72                 // number of bars
+        const eqGap    = 1                  // gap between bars
+        const eqBW     = Math.max(1, Math.floor((wvW - eqGap * (eqCount - 1)) / eqCount))
 
-        const strands = [
-          [0.95, 2.2, 2.1,  1.1, false],
-          [0.80, 2.4, 1.85, 1.3, false],
-          [0.60, 2.6, 1.6,  1.5, false],
-          [0.38, 2.8, 1.35, 1.8, true ],
-          [0.38, 2.8, 1.35, 1.8, true ],
-          [0.60, 2.6, 1.6,  1.5, false],
-          [0.80, 2.4, 1.85, 1.3, false],
-          [0.95, 2.2, 2.1,  1.1, false],
-        ]
-        const mirrorSign = [1, 1, 1, 1, -1, -1, -1, -1]
+        for (let i = 0; i < eqCount; i++) {
+          const t = i / (eqCount - 1)   // 0..1 position across
 
-        ctx.save()
-        ctx.beginPath(); ctx.rect(wvX, waveY - waveHalf - 4, wvW, (waveHalf + 4) * 2); ctx.clip()
+          // Mountain envelope: tallest bars in the center
+          const env = Math.pow(Math.sin(t * Math.PI), 0.55)
 
-        for (let s = 0; s < strands.length; s++) {
-          const [amp, freq, speed, lw, bright] = strands[s]
-          const sign = mirrorSign[s]
-          const travelPhase = now_s * speed
-          const phOffset = s * 0.38
-          ctx.beginPath()
-          for (let p = 0; p <= 100; p++) {
-            const u = p / 100
-            const x = wvX + u * wvW
-            const env = Math.pow(Math.sin(u * Math.PI), 0.7)
-            const y = waveY + sign * amp * waveHalf * env *
-              Math.sin(u * freq * Math.PI * 2 - travelPhase + phOffset)
-            p === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-          }
-          if (bright) {
-            ctx.lineWidth = lw + 0.8; ctx.strokeStyle = 'rgba(255,255,255,0.92)'
-            ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 14
+          // Animate each bar independently with offset phases
+          const p1 = now_s * 2.8  + t * Math.PI * 5.3 + i * 0.45
+          const p2 = now_s * 4.1  + t * Math.PI * 9.7 + i * 0.27
+          const p3 = now_s * 1.65 + t * Math.PI * 3.1 + i * 0.61
+          const rawH = 0.45 + 0.30 * Math.sin(p1) + 0.17 * Math.sin(p2) + 0.08 * Math.sin(p3)
+          const h = Math.max(2, eqMaxH * env * Math.min(1, Math.max(0, rawH)))
+
+          const bX = wvX + i * (eqBW + eqGap)
+
+          // Neon color gradient across bars: blue → purple → white-center → purple → cyan/green
+          const distFromCenter = Math.abs(t - 0.5) * 2  // 0=center, 1=edges
+          let cr, cg, cb, glowColor, glowBlur
+          if (distFromCenter < 0.15) {
+            // Bright white-blue core at center
+            cr = 210; cg = 230; cb = 255; glowBlur = 18; glowColor = '#a0c4ff'
+          } else if (t < 0.35) {
+            // Left: deep blue
+            const m = t / 0.35
+            cr = Math.round(30  + m * 60);  cg = Math.round(80  + m * 80);  cb = 255
+            glowBlur = 9; glowColor = `rgb(${cr},${cg},${cb})`
+          } else if (t < 0.5) {
+            // Left-center: blue → purple
+            const m = (t - 0.35) / 0.15
+            cr = Math.round(90  + m * 80);  cg = Math.round(160 - m * 80); cb = 255
+            glowBlur = 11; glowColor = `rgb(${cr},${cg},${cb})`
+          } else if (t < 0.65) {
+            // Right-center: purple → blue-green
+            const m = (t - 0.5) / 0.15
+            cr = Math.round(170 - m * 100); cg = Math.round(80  + m * 100); cb = 255
+            glowBlur = 11; glowColor = `rgb(${cr},${cg},${cb})`
           } else {
-            const dist = Math.min(s, strands.length - 1 - s)
-            const alpha = Math.max(0.12, 0.72 - (3 - dist) * 0.18)
-            ctx.lineWidth = lw
-            ctx.strokeStyle = `rgba(${ar},${ag},${ab},${alpha.toFixed(2)})`
-            ctx.shadowColor = accentRGB; ctx.shadowBlur = 6
+            // Right: cyan / teal-green
+            const m = (t - 0.65) / 0.35
+            cr = Math.round(70  - m * 40);  cg = Math.round(180 + m * 60);  cb = Math.round(255 - m * 55)
+            glowBlur = 9; glowColor = `rgb(${cr},${cg},${cb})`
           }
-          ctx.stroke()
+
+          ctx.shadowColor = glowColor
+          ctx.shadowBlur  = glowBlur
+          ctx.fillStyle   = `rgb(${cr},${cg},${cb})`
+
+          // Draw bar symmetric from center (up AND down)
+          if (ctx.roundRect) {
+            ctx.beginPath(); ctx.roundRect(bX, eqCY - h, eqBW, h * 2, 1); ctx.fill()
+          } else {
+            ctx.fillRect(bX, eqCY - h, eqBW, h * 2)
+          }
         }
-        ctx.restore()
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
         // ── Progress bar (below waves, aligned with wave zone) ──
