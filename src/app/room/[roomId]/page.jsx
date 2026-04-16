@@ -1625,13 +1625,15 @@ export default function RoomPage() {
     }
 
     try {
-      // ── Canvas setup: 360×110 — canvas px = PiP window size, no DPR scaling ──
-      if (!canvasPipRef.current) {
-        const c = document.createElement('canvas')
-        canvasPipRef.current = c
+      // ── Canvas — always recreate so width/height are guaranteed fresh ──
+      if (canvasPipRef.current) {
+        try { canvasPipRef.current.remove?.() } catch {}
       }
-      const canvas = canvasPipRef.current
-      const W = 360, H = 110
+      const canvas = document.createElement('canvas')
+      canvasPipRef.current = canvas
+      // 400×170: album art (170×170) + content panel (230×170)
+      // This is the EXACT PiP window size Chrome will render
+      const W = 400, H = 170
       canvas.width = W; canvas.height = H
       const ctx = canvas.getContext('2d')
 
@@ -1667,7 +1669,6 @@ export default function RoomPage() {
           anim.thumbImg = null
           anim.skipFired = false
           if (track?.thumbnail) loadThumb(track.thumbnail)
-          // Sync MediaSession metadata
           if ('mediaSession' in navigator && track) {
             try {
               navigator.mediaSession.metadata = new MediaMetadata({
@@ -1678,14 +1679,13 @@ export default function RoomPage() {
           }
         }
 
-        // Keep MediaSession playback state in sync
         if ('mediaSession' in navigator) {
           try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused' } catch {}
         }
 
         ctx.setTransform(1, 0, 0, 1, 0, 0)
 
-        // ── Current time / duration ──
+        // ── Time ──
         let ct = 0, dur = 0
         try {
           const p = ytPlayerRef.current
@@ -1694,114 +1694,127 @@ export default function RoomPage() {
         } catch {}
         const pct = dur > 0 ? Math.min(1, ct / dur) : 0
 
-        // ── Background: dark gradient ──
-        const bg = ctx.createLinearGradient(0, 0, 0, H)
-        bg.addColorStop(0, '#0e0e16')
-        bg.addColorStop(1, '#1a1020')
-        ctx.fillStyle = bg
+        // ── White background ──
+        ctx.fillStyle = '#fafafa'
         ctx.fillRect(0, 0, W, H)
 
-        // Orange top accent strip
-        ctx.fillStyle = '#f97316'
-        ctx.fillRect(0, 0, W, 2)
+        // ── Left: B&W album art (170×170) ──
+        const artW = H
+        if (anim.thumbImg) {
+          ctx.filter = 'grayscale(85%) contrast(1.1)'
+          ctx.drawImage(anim.thumbImg, 0, 0, artW, H)
+          ctx.filter = 'none'
+          // Soft right fade
+          const fade = ctx.createLinearGradient(artW - 36, 0, artW, 0)
+          fade.addColorStop(0, 'rgba(250,250,250,0)')
+          fade.addColorStop(1, 'rgba(250,250,250,1)')
+          ctx.fillStyle = fade
+          ctx.fillRect(artW - 36, 0, 36, H)
+        } else {
+          ctx.fillStyle = '#e2e2e2'
+          ctx.fillRect(0, 0, artW, H)
+          ctx.fillStyle = 'rgba(0,0,0,0.18)'
+          ctx.font = '54px system-ui'
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText('♫', artW / 2, H / 2)
+        }
 
-        // ── Play/Pause indicator circle (left) ──
-        const btnX = 30, btnY = Math.floor(H / 2) - 4
-        ctx.strokeStyle = playing ? '#f97316' : 'rgba(255,255,255,0.3)'
-        ctx.lineWidth = 1.5
-        ctx.beginPath(); ctx.arc(btnX, btnY, 18, 0, Math.PI * 2); ctx.stroke()
-        ctx.fillStyle = playing ? '#f97316' : 'rgba(255,255,255,0.65)'
-        ctx.font = '14px system-ui'
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(playing ? '⏸' : '▶', btnX + (playing ? 0 : 1), btnY)
+        // ── Right panel ──
+        ctx.fillStyle = '#fafafa'
+        ctx.fillRect(artW, 0, W - artW, H)
 
-        // ── Right content area ──
-        const cX = 58, cR = W - 12, cW = cR - cX
+        const cX = artW + 14    // content left
+        const cR = W - 12       // content right
+        const cW = cR - cX      // content width
         ctx.textBaseline = 'alphabetic'
 
-        // Title
-        const title = track?.title || 'Nothing playing'
-        const shortTitle = title.length > 36 ? title.slice(0, 35) + '…' : title
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 12px system-ui'
-        ctx.textAlign = 'left'
-        ctx.fillText(shortTitle, cX, 22)
-
-        // Artist
-        const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
-        const shortArtist = artist.length > 50 ? artist.slice(0, 49) + '…' : artist
-        ctx.fillStyle = 'rgba(255,255,255,0.45)'
-        ctx.font = '9px system-ui'
-        ctx.fillText(shortArtist, cX, 34)
-
-        // Active lyric (single line, orange)
+        // ── 3-line lyrics (prev — ACTIVE — next) ──
         const lyrSnap = lyricsRef.current
         const hasSync = lyrSnap?.synced && lyrSnap?.lines?.length > 0
+        const truncLyric = (s, max) => s.length > max ? s.slice(0, max - 1) + '…' : s
         if (hasSync) {
           const lines = lyrSnap.lines
           const activeIdx = lines.reduce((best, line, i) => line.time <= ct ? i : best, 0)
-          const lyric = lines[activeIdx]?.text || ''
-          const shortLyric = lyric.length > 52 ? lyric.slice(0, 51) + '…' : lyric
-          ctx.fillStyle = '#f97316'
-          ctx.font = 'bold 9px system-ui'
-          ctx.fillText(shortLyric, cX, 49)
+          // Previous line
+          if (activeIdx > 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.25)'
+            ctx.font = '10px system-ui'
+            ctx.textAlign = 'left'
+            ctx.fillText(truncLyric(lines[activeIdx - 1].text, 34), cX, 20)
+          }
+          // Active line — bold, dark
+          ctx.fillStyle = '#111111'
+          ctx.font = 'bold 13px system-ui'
+          ctx.textAlign = 'left'
+          ctx.fillText(truncLyric(lines[activeIdx].text, 30), cX, 41)
+          // Next line
+          if (activeIdx + 1 < lines.length) {
+            ctx.fillStyle = 'rgba(0,0,0,0.25)'
+            ctx.font = '10px system-ui'
+            ctx.textAlign = 'left'
+            ctx.fillText(truncLyric(lines[activeIdx + 1].text, 34), cX, 59)
+          }
         }
+
+        // ── Divider ──
+        ctx.fillStyle = 'rgba(0,0,0,0.07)'
+        ctx.fillRect(cX, 68, cW, 1)
+
+        // ── Title ──
+        const title = track?.title || 'Nothing playing'
+        ctx.fillStyle = '#111111'
+        ctx.font = 'bold 12px system-ui'
+        ctx.textAlign = 'left'
+        ctx.fillText(truncLyric(title, 30), cX, 84)
+
+        // ── Artist ──
+        const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
+        ctx.fillStyle = 'rgba(0,0,0,0.4)'
+        ctx.font = '9.5px system-ui'
+        ctx.fillText(truncLyric(artist, 34), cX, 97)
+
+        // ── Timestamps ──
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'
+        ctx.font = '8px system-ui'
+        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX, 112)
+        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR, 112)
 
         // ── Wavy animated progress bar ──
-        const waveY = 68, amp = 4, wfreq = 0.10
-        const wphase = (anim.frame * 0.08) % (Math.PI * 2)
-
-        // Dim background wave
+        const wY = 120, amp = 3.5, wf = 0.12
+        const phase = (anim.frame * 0.07) % (Math.PI * 2)
+        // Background wave (dim)
         ctx.beginPath()
         for (let x = 0; x <= cW; x++) {
-          const wy = waveY + Math.sin(x * wfreq + wphase) * amp
-          if (x === 0) ctx.moveTo(cX + x, wy)
-          else ctx.lineTo(cX + x, wy)
+          const y = wY + Math.sin(x * wf + phase) * amp
+          x === 0 ? ctx.moveTo(cX + x, y) : ctx.lineTo(cX + x, y)
         }
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)'
-        ctx.lineWidth = 1.5
-        ctx.lineJoin = 'round'
-        ctx.stroke()
-
-        // Orange filled wave clipped to progress
+        ctx.strokeStyle = 'rgba(0,0,0,0.1)'
+        ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke()
+        // Filled orange wave up to progress
         if (pct > 0) {
-          const fillW = cW * pct
           ctx.save()
-          ctx.beginPath()
-          ctx.rect(cX, waveY - amp - 3, fillW, (amp + 3) * 2)
-          ctx.clip()
+          ctx.beginPath(); ctx.rect(cX, wY - amp - 4, cW * pct, (amp + 4) * 2); ctx.clip()
           ctx.beginPath()
           for (let x = 0; x <= cW; x++) {
-            const wy = waveY + Math.sin(x * wfreq + wphase) * amp
-            if (x === 0) ctx.moveTo(cX + x, wy)
-            else ctx.lineTo(cX + x, wy)
+            const y = wY + Math.sin(x * wf + phase) * amp
+            x === 0 ? ctx.moveTo(cX + x, y) : ctx.lineTo(cX + x, y)
           }
           ctx.strokeStyle = '#f97316'
-          ctx.lineWidth = 2.5
-          ctx.lineJoin = 'round'
-          ctx.stroke()
+          ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke()
           ctx.restore()
-
-          // Playhead dot riding the wave
-          const dotX = cX + cW * pct
-          const dotY = waveY + Math.sin(cW * pct * wfreq + wphase) * amp
-          ctx.beginPath(); ctx.arc(dotX, dotY, 3.5, 0, Math.PI * 2)
-          ctx.fillStyle = '#fb923c'; ctx.fill()
-          ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1; ctx.stroke()
+          // Dot on wave
+          const dX = cX + cW * pct
+          const dY = wY + Math.sin(cW * pct * wf + phase) * amp
+          ctx.beginPath(); ctx.arc(dX, dY, 4, 0, Math.PI * 2)
+          ctx.fillStyle = '#f97316'; ctx.fill()
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke()
         }
 
-        // Timestamps
-        ctx.fillStyle = 'rgba(255,255,255,0.32)'
-        ctx.font = '8px system-ui'
-        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX, 88)
-        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR, 88)
-
-        // Pulsing live dot top-right
+        // ── Playing indicator — pulsing orange dot top-right ──
         if (playing) {
-          const pulse = 0.5 + 0.5 * Math.sin(anim.frame * 0.15)
-          ctx.beginPath(); ctx.arc(W - 9, 9, 3, 0, Math.PI * 2)
-          ctx.fillStyle = `rgba(249,115,22,${(0.5 + pulse * 0.5).toFixed(2)})`
-          ctx.fill()
+          const pulse = 0.55 + 0.45 * Math.sin(anim.frame * 0.14)
+          ctx.beginPath(); ctx.arc(W - 10, 10, 4, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(249,115,22,${pulse.toFixed(2)})`; ctx.fill()
         }
       }
 
@@ -1872,14 +1885,24 @@ export default function RoomPage() {
       await video.requestPictureInPicture()
 
       // ── Media Session: wire play/pause/next to YT player ──
-      // Chrome shows these as overlay buttons in the PiP window
+      // play/pause also update Firestore so audioKeepalive doesn't re-start after a pause
       if ('mediaSession' in navigator) {
         try {
           navigator.mediaSession.setActionHandler('play', () => {
             try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.playVideo?.() } catch {}
+            import('firebase/firestore').then(({ updateDoc, doc }) =>
+              import('@/lib/firebase').then(({ db }) =>
+                updateDoc(doc(db, 'rooms', roomId), { isPlaying: true }).catch(() => {})
+              )
+            )
           })
           navigator.mediaSession.setActionHandler('pause', () => {
             try { ytPlayerRef.current?.pauseVideo?.() } catch {}
+            import('firebase/firestore').then(({ updateDoc, doc }) =>
+              import('@/lib/firebase').then(({ db }) =>
+                updateDoc(doc(db, 'rooms', roomId), { isPlaying: false }).catch(() => {})
+              )
+            )
           })
           navigator.mediaSession.setActionHandler('nexttrack', () => {
             try {
