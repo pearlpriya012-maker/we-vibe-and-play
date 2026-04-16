@@ -1657,12 +1657,44 @@ export default function RoomPage() {
         thumbImg: null,
         lastTrackId: null,
         skipFired: false,
+        accent: [249, 115, 22], // default orange, updated on each track load
       }
 
       function loadThumb(url) {
         const img = new window.Image()
         img.crossOrigin = 'anonymous'
-        img.onload = () => { anim.thumbImg = img }
+        img.onload = () => {
+          anim.thumbImg = img
+          // Sample dominant color from the image
+          try {
+            const sc = document.createElement('canvas')
+            sc.width = 16; sc.height = 16
+            const sx = sc.getContext('2d')
+            sx.drawImage(img, 0, 0, 16, 16)
+            const d = sx.getImageData(0, 0, 16, 16).data
+            let r = 0, g = 0, b = 0, count = 0
+            for (let j = 0; j < d.length; j += 4) {
+              // Skip near-white and near-black pixels
+              const br = (d[j] + d[j+1] + d[j+2]) / 3
+              if (br < 20 || br > 235) continue
+              r += d[j]; g += d[j+1]; b += d[j+2]; count++
+            }
+            if (count > 0) {
+              r = Math.round(r / count)
+              g = Math.round(g / count)
+              b = Math.round(b / count)
+              // Boost saturation: push away from gray
+              const avg = (r + g + b) / 3
+              const boost = 1.8
+              r = Math.min(255, Math.max(0, Math.round(avg + (r - avg) * boost)))
+              g = Math.min(255, Math.max(0, Math.round(avg + (g - avg) * boost)))
+              b = Math.min(255, Math.max(0, Math.round(avg + (b - avg) * boost)))
+              anim.accent = [r, g, b]
+            } else {
+              anim.accent = [249, 115, 22] // fallback orange
+            }
+          } catch { anim.accent = [249, 115, 22] }
+        }
         img.onerror = () => { anim.thumbImg = null }
         img.src = url
       }
@@ -1708,34 +1740,53 @@ export default function RoomPage() {
         } catch {}
         const pct = dur > 0 ? Math.min(1, ct / dur) : 0
 
-        // ── White background ──
-        ctx.fillStyle = '#fafafa'
+        // ── Accent colors derived from album ──
+        const [ar, ag, ab] = anim.accent
+        const accentRGB  = `rgb(${ar},${ag},${ab})`
+        const accentDark = `rgb(${Math.round(ar*0.55)},${Math.round(ag*0.55)},${Math.round(ab*0.55)})`
+        const accentGlow = `rgba(${ar},${ag},${ab},0.55)`
+        const accentDim  = `rgba(${ar},${ag},${ab},0.18)`
+        const compR = Math.min(255, ab + 40), compG = Math.min(255, Math.round(ag * 0.6)), compB = ar
+        const compRGB = `rgb(${compR},${compG},${compB})`  // complementary tint
+
+        // ── Background: blurred album art ──
+        if (anim.thumbImg) {
+          ctx.filter = 'blur(18px) brightness(0.35) saturate(2)'
+          ctx.drawImage(anim.thumbImg, -20, -20, W + 40, H + 40)
+          ctx.filter = 'none'
+        } else {
+          ctx.fillStyle = '#0a0a12'
+          ctx.fillRect(0, 0, W, H)
+        }
+        // Dark overlay so text is always readable
+        ctx.fillStyle = 'rgba(0,0,0,0.48)'
         ctx.fillRect(0, 0, W, H)
 
-        // ── Left: B&W album art (170×170) ──
+        // ── Left: album art — full color, rounded left corners ──
         const artW = H
         if (anim.thumbImg) {
-          ctx.filter = 'grayscale(85%) contrast(1.1)'
+          ctx.save()
+          if (ctx.roundRect) {
+            ctx.beginPath(); ctx.roundRect(0, 0, artW, H, [14, 0, 0, 14]); ctx.clip()
+          } else {
+            ctx.beginPath(); ctx.rect(0, 0, artW, H); ctx.clip()
+          }
           ctx.drawImage(anim.thumbImg, 0, 0, artW, H)
-          ctx.filter = 'none'
-          // Soft right fade
-          const fade = ctx.createLinearGradient(artW - 36, 0, artW, 0)
-          fade.addColorStop(0, 'rgba(250,250,250,0)')
-          fade.addColorStop(1, 'rgba(250,250,250,1)')
+          ctx.restore()
+          // Fade edge into content panel
+          const fade = ctx.createLinearGradient(artW - 32, 0, artW, 0)
+          fade.addColorStop(0, 'rgba(0,0,0,0)')
+          fade.addColorStop(1, 'rgba(0,0,0,0.72)')
           ctx.fillStyle = fade
-          ctx.fillRect(artW - 36, 0, 36, H)
+          ctx.fillRect(artW - 32, 0, 32, H)
         } else {
-          ctx.fillStyle = '#e2e2e2'
+          ctx.fillStyle = '#1a1a2e'
           ctx.fillRect(0, 0, artW, H)
-          ctx.fillStyle = 'rgba(0,0,0,0.18)'
-          ctx.font = '54px system-ui'
+          ctx.fillStyle = accentRGB
+          ctx.font = '52px system-ui'
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
           ctx.fillText('♫', artW / 2, H / 2)
         }
-
-        // ── Right panel ──
-        ctx.fillStyle = '#fafafa'
-        ctx.fillRect(artW, 0, W - artW, H)
 
         const cX = artW + 14    // content left
         const cR = W - 12       // content right
@@ -1751,19 +1802,19 @@ export default function RoomPage() {
           const activeIdx = lines.reduce((best, line, i) => line.time <= ct ? i : best, 0)
           // Previous line
           if (activeIdx > 0) {
-            ctx.fillStyle = 'rgba(0,0,0,0.25)'
+            ctx.fillStyle = 'rgba(255,255,255,0.35)'
             ctx.font = '10px system-ui'
             ctx.textAlign = 'left'
             ctx.fillText(truncLyric(lines[activeIdx - 1].text, 34), cX, 20)
           }
-          // Active line — bold, dark
-          ctx.fillStyle = '#111111'
+          // Active line — bold, accent color
+          ctx.fillStyle = accentRGB
           ctx.font = 'bold 13px system-ui'
           ctx.textAlign = 'left'
           ctx.fillText(truncLyric(lines[activeIdx].text, 30), cX, 41)
           // Next line
           if (activeIdx + 1 < lines.length) {
-            ctx.fillStyle = 'rgba(0,0,0,0.25)'
+            ctx.fillStyle = 'rgba(255,255,255,0.35)'
             ctx.font = '10px system-ui'
             ctx.textAlign = 'left'
             ctx.fillText(truncLyric(lines[activeIdx + 1].text, 34), cX, 59)
@@ -1771,83 +1822,96 @@ export default function RoomPage() {
         }
 
         // ── Divider ──
-        ctx.fillStyle = 'rgba(0,0,0,0.07)'
+        ctx.fillStyle = `rgba(${ar},${ag},${ab},0.25)`
         ctx.fillRect(cX, 68, cW, 1)
 
         // ── Title ──
         const title = track?.title || 'Nothing playing'
-        ctx.fillStyle = '#111111'
+        ctx.fillStyle = '#ffffff'
         ctx.font = 'bold 12px system-ui'
         ctx.textAlign = 'left'
         ctx.fillText(truncLyric(title, 30), cX, 84)
 
         // ── Artist ──
         const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
-        ctx.fillStyle = 'rgba(0,0,0,0.4)'
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'
         ctx.font = '9.5px system-ui'
         ctx.fillText(truncLyric(artist, 34), cX, 97)
 
-        // ── Spectrum bar visualizer – matches reference: symmetric, black bg, pink→orange→cyan + glow ──
-        const barCount = 58
-        const specCY = 130           // center Y of bar zone
-        const specHalf = 28          // max half-height (bars grow up AND down from center)
-        const bW = Math.max(1, Math.floor(cW / barCount - 0.8))
-        const phase = (anim.frame * 0.05) % (Math.PI * 2)
+        // ── Wave-line visualizer (flowing glowing strands, like reference) ──
+        const waveY    = 125   // center Y of wave zone
+        const waveHalf = 22    // max amplitude
+        const strandCount = 7  // layered wave lines
+        const phase = (anim.frame * 0.045) % (Math.PI * 2)
 
-        // Black background for bar zone
-        ctx.fillStyle = '#050508'
-        ctx.fillRect(cX, specCY - specHalf - 4, cW, (specHalf + 4) * 2 + 1)
+        ctx.save()
+        ctx.beginPath(); ctx.rect(cX, waveY - waveHalf - 6, cW, (waveHalf + 6) * 2); ctx.clip()
 
-        for (let i = 0; i < barCount; i++) {
-          const t = i / (barCount - 1)
-          // Envelope: taller in middle regions (matches mountainous profile in reference)
-          const env = Math.pow(Math.sin(t * Math.PI), 0.55)
-          const rawH = env * (
-            0.45 + 0.28 * Math.sin(t * Math.PI * 3.4 + phase) +
-            0.18 * Math.sin(t * Math.PI * 8.7 + phase * 1.65) +
-            0.09 * Math.sin(t * Math.PI * 19 + phase * 0.85)
-          )
-          const h = Math.max(2, specHalf * Math.min(1, Math.max(0, rawH)))
-          const bX = cX + t * cW
-          const isFilled = t <= pct
+        for (let s = 0; s < strandCount; s++) {
+          const sNorm   = s / (strandCount - 1)        // 0..1
+          const center  = Math.abs(sNorm - 0.5) * 2    // 0=center strand, 1=outermost
+          const ampScale = Math.max(0.18, 1 - center * 0.72)
+          const phShift  = phase + s * 0.52
 
-          if (isFilled) {
-            // Glowing filled bar
-            ctx.shadowColor = '#f97316'
-            ctx.shadowBlur = 7
-            const grad = ctx.createLinearGradient(bX, specCY - h, bX, specCY + h)
-            grad.addColorStop(0,    '#ff1f6d')
-            grad.addColorStop(0.42, '#f97316')
-            grad.addColorStop(1,    '#0ea5e9')
-            ctx.fillStyle = grad
-          } else {
-            // Dim ghost bar
-            ctx.shadowBlur = 0
-            const grad = ctx.createLinearGradient(bX, specCY - h, bX, specCY + h)
-            grad.addColorStop(0, 'rgba(255,31,109,0.18)')
-            grad.addColorStop(1, 'rgba(14,165,233,0.18)')
-            ctx.fillStyle = grad
+          ctx.beginPath()
+          const pts = 90
+          for (let p = 0; p <= pts; p++) {
+            const t = p / pts
+            const x = cX + t * cW
+            // taper to zero at both ends, peaks in the middle
+            const xEnv = Math.pow(Math.sin(t * Math.PI), 0.6)
+            const y = waveY + ampScale * waveHalf * xEnv * (
+              0.55 * Math.sin(t * Math.PI * 3.1 + phShift) +
+              0.28 * Math.sin(t * Math.PI * 7.3 + phShift * 1.45) +
+              0.17 * Math.sin(t * Math.PI * 14  + phShift * 0.68)
+            )
+            p === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
           }
 
-          if (ctx.roundRect) {
-            ctx.beginPath(); ctx.roundRect(bX, specCY - h, bW, h * 2, 1); ctx.fill()
-          } else {
-            ctx.fillRect(bX, specCY - h, bW, h * 2)
-          }
+          // Center strand = bright white core, outer = accent color dimming out
+          const isCoreStrand = center < 0.3
+          const alpha = isCoreStrand ? 0.9 : Math.max(0.08, 0.65 - center * 0.6)
+          ctx.lineWidth   = isCoreStrand ? 1.9 : 1.2
+          ctx.strokeStyle = isCoreStrand
+            ? `rgba(255,255,255,${alpha.toFixed(2)})`
+            : `rgba(${ar},${ag},${ab},${alpha.toFixed(2)})`
+          ctx.shadowColor = isCoreStrand ? '#ffffff' : accentRGB
+          ctx.shadowBlur  = isCoreStrand ? 12 : 6
+          ctx.stroke()
         }
+        ctx.restore()
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
-        // Timestamps below spectrum
-        ctx.fillStyle = 'rgba(255,255,255,0.28)'
-        ctx.font = '8px system-ui'
-        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX, specCY + specHalf + 14)
-        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR, specCY + specHalf + 14)
+        // ── Thin progress bar + timestamps ──
+        const pgY = waveY + waveHalf + 8   // = 155  (well within 170px canvas)
+        // Track line
+        ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.2)`
+        ctx.lineWidth = 1.5
+        ctx.beginPath(); ctx.moveTo(cX, pgY); ctx.lineTo(cR, pgY); ctx.stroke()
+        // Played portion with glow
+        if (pct > 0) {
+          ctx.shadowColor = accentRGB; ctx.shadowBlur = 5
+          ctx.strokeStyle = accentRGB
+          ctx.lineWidth = 1.5
+          ctx.beginPath(); ctx.moveTo(cX, pgY); ctx.lineTo(cX + pct * cW, pgY); ctx.stroke()
+          ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
+          // Playhead dot
+          ctx.beginPath(); ctx.arc(cX + pct * cW, pgY, 2.5, 0, Math.PI * 2)
+          ctx.fillStyle = '#ffffff'; ctx.fill()
+        }
+        // Timestamps
+        ctx.fillStyle = 'rgba(255,255,255,0.38)'
+        ctx.font = '7.5px system-ui'
+        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX,  pgY + 10)
+        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR,  pgY + 10)
 
-        // ── Playing indicator — pulsing orange dot top-right ──
+        // ── Playing indicator — pulsing dot top-right (accent color) ──
         if (playing) {
           const pulse = 0.55 + 0.45 * Math.sin(anim.frame * 0.14)
+          ctx.shadowColor = accentRGB; ctx.shadowBlur = 6
           ctx.beginPath(); ctx.arc(W - 10, 10, 4, 0, Math.PI * 2)
-          ctx.fillStyle = `rgba(249,115,22,${pulse.toFixed(2)})`; ctx.fill()
+          ctx.fillStyle = `rgba(${ar},${ag},${ab},${pulse.toFixed(2)})`; ctx.fill()
+          ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
         }
       }
 
