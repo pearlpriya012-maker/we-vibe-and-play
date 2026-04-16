@@ -1677,7 +1677,7 @@ export default function RoomPage() {
       canvasPipRef.current = canvas
       // 400×170: album art (170×170) + content panel (230×170)
       // This is the EXACT PiP window size Chrome will render
-      const W = 400, H = 170
+      const W = 400, H = pipLyricsRef.current ? 170 : 88  // shorter when lyrics are off (bars end at y≈71)
       canvas.width = W; canvas.height = H
       const ctx = canvas.getContext('2d')
 
