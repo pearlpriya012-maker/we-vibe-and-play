@@ -26,11 +26,11 @@ function Avatar({ user, size = 32 }) {
 function MusicVisualizer({ track, isPlaying, compact = false }) {
   if (compact) {
     return (
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2.5, height: 22, flexShrink: 0 }}>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ width: 3, borderRadius: 2, background: 'linear-gradient(to bottom, #ff2775, #f97316 42%, #06b6d4)', animation: isPlaying ? `mobileBar ${0.3 + i * 0.1}s ease-in-out ${i * 0.08}s infinite alternate` : 'none', height: isPlaying ? `${40 + i * 10}%` : '20%', transition: 'height 0.3s', opacity: 0.95, boxShadow: isPlaying ? '0 0 4px rgba(255,39,117,0.55)' : 'none' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 1.5, height: 24, flexShrink: 0, background: '#000', borderRadius: 4, padding: '0 3px' }}>
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} style={{ width: 3, borderRadius: 2, background: 'linear-gradient(to bottom, #ff1f6d, #f97316 48%, #0ea5e9)', animation: isPlaying ? `mobileBar2 ${0.28 + i * 0.09}s ease-in-out ${i * 0.07}s infinite alternate` : 'none', height: isPlaying ? `${30 + i * 8}%` : '15%', transition: 'height 0.3s', boxShadow: isPlaying ? '0 0 5px rgba(249,115,22,0.7)' : 'none' }} />
         ))}
-        <style>{`@keyframes mobileBar { from{height:12%} to{height:100%} }`}</style>
+        <style>{`@keyframes mobileBar2 { from{height:10%} to{height:100%} }`}</style>
       </div>
     )
   }
@@ -50,16 +50,30 @@ function MusicVisualizer({ track, isPlaying, compact = false }) {
       </div>
       {/* Center spindle */}
       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-56%)', width: 13, height: 13, borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 2.5px var(--green), 0 0 16px var(--green)', zIndex: 2 }} />
-      {/* Spectrum bars */}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '28%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, padding: '0 10px 12px', background: 'linear-gradient(0deg, rgba(0,0,0,0.96) 0%, transparent 100%)' }}>
-        {Array.from({ length: 40 }).map((_, i) => (
-          <div key={i} style={{ flex: 1, borderRadius: '2px 2px 0 0', background: 'linear-gradient(to bottom, #ff2775 0%, #f97316 46%, #06b6d4 100%)', animation: isPlaying ? `specBar ${0.24 + (i % 7) * 0.07}s ease-in-out ${i * 0.027}s infinite alternate` : 'none', height: isPlaying ? `${20 + (i % 9) * 9}%` : '5%', transition: 'height 0.4s ease', opacity: isPlaying ? 0.95 : 0.16, boxShadow: isPlaying ? '0 0 3px rgba(255,39,117,0.4)' : 'none' }} />
-        ))}
+      {/* Spectrum bars – symmetric, black bg, pink→orange→cyan + glow */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, padding: '0 8px', background: '#000' }}>
+        {Array.from({ length: 55 }).map((_, i) => {
+          const t = i / 54
+          const env = Math.pow(Math.sin(t * Math.PI), 0.55)
+          const baseH = Math.max(4, env * (55 + (i % 9) * 6))
+          return (
+            <div key={i} style={{
+              flex: 1,
+              borderRadius: 2,
+              background: 'linear-gradient(to bottom, #ff1f6d 0%, #f97316 46%, #0ea5e9 100%)',
+              animation: isPlaying ? `specBar2 ${0.22 + (i % 8) * 0.06}s ease-in-out ${i * 0.021}s infinite alternate` : 'none',
+              height: isPlaying ? `${baseH}%` : '4%',
+              transition: 'height 0.35s ease',
+              opacity: isPlaying ? 1 : 0.12,
+              boxShadow: isPlaying ? '0 0 4px #f97316, 0 0 10px rgba(255,31,109,0.35)' : 'none',
+            }} />
+          )
+        })}
       </div>
       <style>{`
         @keyframes spinAlbum { from{transform:translate(-50%,-56%) rotate(0deg)} to{transform:translate(-50%,-56%) rotate(360deg)} }
         @keyframes pulseRing { 0%{opacity:0.5;transform:translate(-50%,-56%) scale(1)} 100%{opacity:0;transform:translate(-50%,-56%) scale(1.35)} }
-        @keyframes specBar { from{height:4%} to{height:98%} }
+        @keyframes specBar2 { from{height:4%} to{height:100%} }
       `}</style>
     </div>
   )
@@ -1773,43 +1787,61 @@ export default function RoomPage() {
         ctx.font = '9.5px system-ui'
         ctx.fillText(truncLyric(artist, 34), cX, 97)
 
-        // ── Spectrum bar visualizer (pink → orange → cyan gradient, progress-clipped) ──
-        const barCount = 52
-        const barBtm = 154
-        const barZoneH = 40
-        const bW = Math.max(1, Math.floor(cW / barCount) - 1)
-        const phase = (anim.frame * 0.055) % (Math.PI * 2)
+        // ── Spectrum bar visualizer – matches reference: symmetric, black bg, pink→orange→cyan + glow ──
+        const barCount = 58
+        const specCY = 130           // center Y of bar zone
+        const specHalf = 28          // max half-height (bars grow up AND down from center)
+        const bW = Math.max(1, Math.floor(cW / barCount - 0.8))
+        const phase = (anim.frame * 0.05) % (Math.PI * 2)
+
+        // Black background for bar zone
+        ctx.fillStyle = '#050508'
+        ctx.fillRect(cX, specCY - specHalf - 4, cW, (specHalf + 4) * 2 + 1)
+
         for (let i = 0; i < barCount; i++) {
           const t = i / (barCount - 1)
-          const rawH = 0.36 + 0.30 * Math.sin(t * Math.PI * 4.1 + phase)
-                           + 0.20 * Math.sin(t * Math.PI * 9.3 + phase * 1.7)
-                           + 0.12 * Math.sin(t * Math.PI * 17.5 + phase * 0.8)
-          const h = Math.max(3, barZoneH * Math.min(1, Math.max(0, rawH)))
-          const bX = cX + i * (cW / barCount)
-          const bY = barBtm - h
+          // Envelope: taller in middle regions (matches mountainous profile in reference)
+          const env = Math.pow(Math.sin(t * Math.PI), 0.55)
+          const rawH = env * (
+            0.45 + 0.28 * Math.sin(t * Math.PI * 3.4 + phase) +
+            0.18 * Math.sin(t * Math.PI * 8.7 + phase * 1.65) +
+            0.09 * Math.sin(t * Math.PI * 19 + phase * 0.85)
+          )
+          const h = Math.max(2, specHalf * Math.min(1, Math.max(0, rawH)))
+          const bX = cX + t * cW
           const isFilled = t <= pct
-          const grad = ctx.createLinearGradient(bX, bY, bX, barBtm)
+
           if (isFilled) {
-            grad.addColorStop(0, '#ff2775')
-            grad.addColorStop(0.48, '#f97316')
-            grad.addColorStop(1, '#06b6d4')
+            // Glowing filled bar
+            ctx.shadowColor = '#f97316'
+            ctx.shadowBlur = 7
+            const grad = ctx.createLinearGradient(bX, specCY - h, bX, specCY + h)
+            grad.addColorStop(0,    '#ff1f6d')
+            grad.addColorStop(0.42, '#f97316')
+            grad.addColorStop(1,    '#0ea5e9')
+            ctx.fillStyle = grad
           } else {
-            grad.addColorStop(0, 'rgba(0,0,0,0.14)')
-            grad.addColorStop(1, 'rgba(0,0,0,0.06)')
+            // Dim ghost bar
+            ctx.shadowBlur = 0
+            const grad = ctx.createLinearGradient(bX, specCY - h, bX, specCY + h)
+            grad.addColorStop(0, 'rgba(255,31,109,0.18)')
+            grad.addColorStop(1, 'rgba(14,165,233,0.18)')
+            ctx.fillStyle = grad
           }
-          ctx.fillStyle = grad
+
           if (ctx.roundRect) {
-            ctx.beginPath(); ctx.roundRect(bX, bY, bW, h, 1.5); ctx.fill()
+            ctx.beginPath(); ctx.roundRect(bX, specCY - h, bW, h * 2, 1); ctx.fill()
           } else {
-            ctx.fillRect(bX, bY, bW, h)
+            ctx.fillRect(bX, specCY - h, bW, h * 2)
           }
         }
+        ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
-        // Timestamps below bars
-        ctx.fillStyle = 'rgba(0,0,0,0.35)'
+        // Timestamps below spectrum
+        ctx.fillStyle = 'rgba(255,255,255,0.28)'
         ctx.font = '8px system-ui'
-        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX, barBtm + 11)
-        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR, barBtm + 11)
+        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX, specCY + specHalf + 14)
+        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR, specCY + specHalf + 14)
 
         // ── Playing indicator — pulsing orange dot top-right ──
         if (playing) {
