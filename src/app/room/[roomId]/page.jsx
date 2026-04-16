@@ -1844,8 +1844,51 @@ export default function RoomPage() {
         cancel: () => {
           if (rafId) cancelAnimationFrame(rafId)
           clearInterval(watchdogInterval)
+          clearInterval(audioKeepalive)
+          document.removeEventListener('visibilitychange', onVisibilityChange)
         }
       }
+
+      // ── Keep YT audio alive while tab is hidden (PiP active) ──
+      // Chrome may suspend the YT iframe's audio when the tab goes to background.
+      // Every time the tab becomes hidden, forcibly unMute + playVideo so audio continues.
+      function onVisibilityChange() {
+        if (document.hidden) {
+          try {
+            const p = ytPlayerRef.current
+            if (!p) return
+            p.unMute?.()
+            p.setVolume?.(100)
+            p.playVideo?.()
+            // Also send postMessage directly to the iframe — bypasses JS timer throttling
+            const iframe = document.querySelector('iframe[src*="youtube"]')
+            if (iframe?.contentWindow)
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+          } catch {}
+        }
+      }
+      document.addEventListener('visibilitychange', onVisibilityChange)
+
+      // Also boost audio in the watchdog every second while hidden
+      const origWatchdog = watchdogInterval
+      const audioKeepalive = setInterval(() => {
+        if (!document.hidden) return
+        try {
+          const p = ytPlayerRef.current
+          if (!p) return
+          const state = p.getPlayerState?.()
+          // State 1 = playing — if not playing, kick it
+          if (state !== 1 && roomRef.current?.isPlaying) {
+            p.unMute?.()
+            p.setVolume?.(100)
+            p.playVideo?.()
+          } else if (state === 1) {
+            // Already playing — just ensure unmuted
+            p.unMute?.()
+            p.setVolume?.(100)
+          }
+        } catch {}
+      }, 2000)
 
       // Stop animation when PiP is closed
       video.addEventListener('leavepictureinpicture', () => {
