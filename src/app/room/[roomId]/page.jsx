@@ -1755,186 +1755,183 @@ export default function RoomPage() {
         const [ar, ag, ab] = anim.accent
         const accentRGB  = `rgb(${ar},${ag},${ab})`
         const accentDark = `rgb(${Math.round(ar*0.55)},${Math.round(ag*0.55)},${Math.round(ab*0.55)})`
-        const accentGlow = `rgba(${ar},${ag},${ab},0.55)`
         const accentDim  = `rgba(${ar},${ag},${ab},0.18)`
         const compR = Math.min(255, ab + 40), compG = Math.min(255, Math.round(ag * 0.6)), compB = ar
-        const compRGB = `rgb(${compR},${compG},${compB})`  // complementary tint
+        const compRGB = `rgb(${compR},${compG},${compB})`
 
-        // ── Background: blurred album art ──
+        // ── Background: blurred album art (full canvas) ──
         if (anim.thumbImg) {
-          ctx.filter = 'blur(18px) brightness(0.35) saturate(2)'
+          ctx.filter = 'blur(18px) brightness(0.32) saturate(2)'
           ctx.drawImage(anim.thumbImg, -20, -20, W + 40, H + 40)
           ctx.filter = 'none'
         } else {
           ctx.fillStyle = '#0a0a12'
           ctx.fillRect(0, 0, W, H)
         }
-        // Dark overlay so text is always readable
-        ctx.fillStyle = 'rgba(0,0,0,0.48)'
+        ctx.fillStyle = 'rgba(0,0,0,0.45)'
         ctx.fillRect(0, 0, W, H)
 
-        // ── Left: album art — smaller, full color, rounded left corners ──
-        const artW = 90
-        if (anim.thumbImg) {
-          ctx.save()
-          if (ctx.roundRect) {
-            ctx.beginPath(); ctx.roundRect(0, 0, artW, H, [14, 0, 0, 14]); ctx.clip()
-          } else {
-            ctx.beginPath(); ctx.rect(0, 0, artW, H); ctx.clip()
-          }
-          ctx.drawImage(anim.thumbImg, 0, 0, artW, H)
-          ctx.restore()
-          // Fade edge into content panel
-          const fade = ctx.createLinearGradient(artW - 24, 0, artW, 0)
-          fade.addColorStop(0, 'rgba(0,0,0,0)')
-          fade.addColorStop(1, 'rgba(0,0,0,0.72)')
-          ctx.fillStyle = fade
-          ctx.fillRect(artW - 24, 0, 24, H)
-        } else {
-          ctx.fillStyle = '#1a1a2e'
-          ctx.fillRect(0, 0, artW, H)
-          ctx.fillStyle = accentRGB
-          ctx.font = '30px system-ui'
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-          ctx.fillText('♫', artW / 2, H / 2)
-        }
-
-        const cX = artW + 14    // content left
-        const cR = W - 12       // content right
-        const cW = cR - cX      // content width
+        // ─────────────────────────────────────
+        // Layout (no left panel — full width)
+        // pX=12 left pad, pR=388 right pad
+        // ─────────────────────────────────────
+        const pX = 12, pR = W - 12, pW = pR - pX
+        const truncLyric = (s, max) => s.length > max ? s.slice(0, max - 1) + '…' : s
         ctx.textBaseline = 'alphabetic'
 
-        // ── 3-line lyrics (prev — ACTIVE — next) ──
+        // ── TOP: 3-line lyrics (prev / ACTIVE / next) ──
         const lyrSnap = lyricsRef.current
         const hasSync = lyrSnap?.synced && lyrSnap?.lines?.length > 0
-        const truncLyric = (s, max) => s.length > max ? s.slice(0, max - 1) + '…' : s
         if (hasSync) {
           const lines = lyrSnap.lines
           const activeIdx = lines.reduce((best, line, i) => line.time <= ct ? i : best, 0)
-          // Previous line
           if (activeIdx > 0) {
-            ctx.fillStyle = 'rgba(255,255,255,0.35)'
-            ctx.font = '10px system-ui'
-            ctx.textAlign = 'left'
-            ctx.fillText(truncLyric(lines[activeIdx - 1].text, 34), cX, 20)
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'
+            ctx.font = '10px system-ui'; ctx.textAlign = 'left'
+            ctx.fillText(truncLyric(lines[activeIdx - 1].text, 50), pX, 15)
           }
-          // Active line — bold, accent color
           ctx.fillStyle = accentRGB
-          ctx.font = 'bold 13px system-ui'
-          ctx.textAlign = 'left'
-          ctx.fillText(truncLyric(lines[activeIdx].text, 30), cX, 41)
-          // Next line
+          ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'left'
+          ctx.fillText(truncLyric(lines[activeIdx].text, 45), pX, 32)
           if (activeIdx + 1 < lines.length) {
-            ctx.fillStyle = 'rgba(255,255,255,0.35)'
-            ctx.font = '10px system-ui'
-            ctx.textAlign = 'left'
-            ctx.fillText(truncLyric(lines[activeIdx + 1].text, 34), cX, 59)
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'
+            ctx.font = '10px system-ui'; ctx.textAlign = 'left'
+            ctx.fillText(truncLyric(lines[activeIdx + 1].text, 50), pX, 47)
           }
+        } else {
+          // No lyrics — show title centred
+          const title0 = track?.title || 'Nothing playing'
+          ctx.fillStyle = 'rgba(255,255,255,0.55)'
+          ctx.font = '11px system-ui'; ctx.textAlign = 'left'
+          ctx.fillText(truncLyric(title0, 55), pX, 28)
         }
 
         // ── Divider ──
-        ctx.fillStyle = `rgba(${ar},${ag},${ab},0.25)`
-        ctx.fillRect(cX, 68, cW, 1)
+        ctx.fillStyle = `rgba(${ar},${ag},${ab},0.22)`
+        ctx.fillRect(pX, 54, pW, 1)
 
-        // ── Title ──
+        // ── Track info (title + artist) ──
         const title = track?.title || 'Nothing playing'
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 12px system-ui'
-        ctx.textAlign = 'left'
-        ctx.fillText(truncLyric(title, 30), cX, 84)
-
-        // ── Artist ──
         const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
-        ctx.fillStyle = 'rgba(255,255,255,0.5)'
-        ctx.font = '9.5px system-ui'
-        ctx.fillText(truncLyric(artist, 34), cX, 97)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 11.5px system-ui'; ctx.textAlign = 'left'
+        ctx.fillText(truncLyric(title, 48), pX, 66)
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'
+        ctx.font = '9px system-ui'
+        ctx.fillText(truncLyric(artist, 55), pX, 77)
 
-        // ── Wave-line visualizer — traveling strands, matches reference ──
-        // Use wall-clock time so waves ALWAYS travel even if rAF briefly stalls
-        const now_s = Date.now() * 0.001
-        const waveY    = 125
+        // ── BOTTOM SECTION: album square (left) + waves + progress ──
+        const botY   = 82   // top of bottom zone
+        const sqSize = 52   // album thumbnail square
+        const sqX    = pX   // left aligned
+        const sqY    = H - sqSize - 6  // = 112  (bottom at H-6=164)
+        const wvX    = sqX + sqSize + 8 // waves start here
+        const wvR    = pR
+        const wvW    = wvR - wvX
+
+        // Album square — rounded, object-fit cover
+        if (anim.thumbImg) {
+          ctx.save()
+          if (ctx.roundRect) {
+            ctx.beginPath(); ctx.roundRect(sqX, sqY, sqSize, sqSize, 6); ctx.clip()
+          } else {
+            ctx.beginPath(); ctx.rect(sqX, sqY, sqSize, sqSize); ctx.clip()
+          }
+          // Cover-fit: crop center
+          const iw = anim.thumbImg.naturalWidth  || anim.thumbImg.width
+          const ih = anim.thumbImg.naturalHeight || anim.thumbImg.height
+          const ir = iw / ih
+          let sx = 0, sy = 0, sw = iw, sh = ih
+          if (ir > 1) { sw = ih; sx = (iw - sw) / 2 }
+          else        { sh = iw; sy = (ih - sh) / 2 }
+          ctx.drawImage(anim.thumbImg, sx, sy, sw, sh, sqX, sqY, sqSize, sqSize)
+          ctx.restore()
+          // Thin accent border
+          ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.6)`
+          ctx.lineWidth = 1
+          if (ctx.roundRect) {
+            ctx.beginPath(); ctx.roundRect(sqX, sqY, sqSize, sqSize, 6); ctx.stroke()
+          }
+        } else {
+          ctx.fillStyle = '#1a1a2e'
+          ctx.fillRect(sqX, sqY, sqSize, sqSize)
+          ctx.fillStyle = accentRGB
+          ctx.font = '22px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText('♫', sqX + sqSize / 2, sqY + sqSize / 2)
+          ctx.textBaseline = 'alphabetic'
+        }
+
+        // ── Wave-line visualizer (beside album, in bottom zone) ──
+        const waveY    = sqY + sqSize / 2   // vertically centered with album
         const waveHalf = 20
+        const now_s = Date.now() * 0.001
 
-        // 8 strands: index 0/7 = outermost, 3/4 = innermost (center)
-        // Each pair mirrors vertically — strands sit both above AND below axis
         const strands = [
-          // [ampFraction, freqCycles, travelSpeed, lineW, isBright]
-          [0.95, 2.2, 2.1,  1.1, false],  // outer 1
-          [0.80, 2.4, 1.85, 1.3, false],  // outer 2
-          [0.60, 2.6, 1.6,  1.5, false],  // mid
-          [0.38, 2.8, 1.35, 1.8, true ],  // inner — bright
-          [0.38, 2.8, 1.35, 1.8, true ],  // inner — bright (mirror)
-          [0.60, 2.6, 1.6,  1.5, false],  // mid mirror
-          [0.80, 2.4, 1.85, 1.3, false],  // outer 2 mirror
-          [0.95, 2.2, 2.1,  1.1, false],  // outer 1 mirror
+          [0.95, 2.2, 2.1,  1.1, false],
+          [0.80, 2.4, 1.85, 1.3, false],
+          [0.60, 2.6, 1.6,  1.5, false],
+          [0.38, 2.8, 1.35, 1.8, true ],
+          [0.38, 2.8, 1.35, 1.8, true ],
+          [0.60, 2.6, 1.6,  1.5, false],
+          [0.80, 2.4, 1.85, 1.3, false],
+          [0.95, 2.2, 2.1,  1.1, false],
         ]
-        // Mirror flag: bottom half of array draws with opposite Y sign
         const mirrorSign = [1, 1, 1, 1, -1, -1, -1, -1]
 
         ctx.save()
-        ctx.beginPath(); ctx.rect(cX, waveY - waveHalf - 8, cW, (waveHalf + 8) * 2); ctx.clip()
+        ctx.beginPath(); ctx.rect(wvX, waveY - waveHalf - 4, wvW, (waveHalf + 4) * 2); ctx.clip()
 
         for (let s = 0; s < strands.length; s++) {
           const [amp, freq, speed, lw, bright] = strands[s]
           const sign = mirrorSign[s]
           const travelPhase = now_s * speed
-          // Outer strands get a unique phase offset so they don't all overlap
           const phOffset = s * 0.38
-
           ctx.beginPath()
-          const pts = 100
-          for (let p = 0; p <= pts; p++) {
-            const u = p / pts
-            const x  = cX + u * cW
-            // Taper amplitude to zero at both edges — mountain envelope
+          for (let p = 0; p <= 100; p++) {
+            const u = p / 100
+            const x = wvX + u * wvW
             const env = Math.pow(Math.sin(u * Math.PI), 0.7)
-            // TRAVELING wave: sin(position - time) moves left→right
             const y = waveY + sign * amp * waveHalf * env *
               Math.sin(u * freq * Math.PI * 2 - travelPhase + phOffset)
             p === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
           }
-
           if (bright) {
-            ctx.lineWidth   = lw + 0.8
-            ctx.strokeStyle = 'rgba(255,255,255,0.92)'
-            ctx.shadowColor = '#ffffff'
-            ctx.shadowBlur  = 14
+            ctx.lineWidth = lw + 0.8; ctx.strokeStyle = 'rgba(255,255,255,0.92)'
+            ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 14
           } else {
-            // Outer strands fade: outermost (s=0,7) are dimmest
-            const distFromBright = Math.min(s, strands.length - 1 - s)  // 0..3
-            const alpha = Math.max(0.12, 0.72 - (3 - distFromBright) * 0.18)
-            ctx.lineWidth   = lw
+            const dist = Math.min(s, strands.length - 1 - s)
+            const alpha = Math.max(0.12, 0.72 - (3 - dist) * 0.18)
+            ctx.lineWidth = lw
             ctx.strokeStyle = `rgba(${ar},${ag},${ab},${alpha.toFixed(2)})`
-            ctx.shadowColor = accentRGB
-            ctx.shadowBlur  = 6
+            ctx.shadowColor = accentRGB; ctx.shadowBlur = 6
           }
           ctx.stroke()
         }
         ctx.restore()
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
-        // ── Thin progress bar + timestamps ──
-        const pgY = waveY + waveHalf + 8   // = 155  (well within 170px canvas)
-        // Track line
-        ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.2)`
+        // ── Progress bar (below waves, aligned with wave zone) ──
+        const pgY = sqY + sqSize + 2  // just below the album square = 166
+        // Clamp so it's always within canvas
+        const pgYc = Math.min(pgY, H - 6)
+        ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.18)`
         ctx.lineWidth = 1.5
-        ctx.beginPath(); ctx.moveTo(cX, pgY); ctx.lineTo(cR, pgY); ctx.stroke()
-        // Played portion with glow
+        ctx.beginPath(); ctx.moveTo(wvX, pgYc); ctx.lineTo(wvR, pgYc); ctx.stroke()
         if (pct > 0) {
           ctx.shadowColor = accentRGB; ctx.shadowBlur = 5
-          ctx.strokeStyle = accentRGB
-          ctx.lineWidth = 1.5
-          ctx.beginPath(); ctx.moveTo(cX, pgY); ctx.lineTo(cX + pct * cW, pgY); ctx.stroke()
+          ctx.strokeStyle = accentRGB; ctx.lineWidth = 1.5
+          ctx.beginPath(); ctx.moveTo(wvX, pgYc); ctx.lineTo(wvX + pct * wvW, pgYc); ctx.stroke()
           ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
-          // Playhead dot
-          ctx.beginPath(); ctx.arc(cX + pct * cW, pgY, 2.5, 0, Math.PI * 2)
+          ctx.beginPath(); ctx.arc(wvX + pct * wvW, pgYc, 2.5, 0, Math.PI * 2)
           ctx.fillStyle = '#ffffff'; ctx.fill()
         }
-        // Timestamps
-        ctx.fillStyle = 'rgba(255,255,255,0.38)'
-        ctx.font = '7.5px system-ui'
-        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  cX,  pgY + 10)
-        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), cR,  pgY + 10)
+        // Timestamps (only if room — below progress, may be cut off on tiny displays)
+        if (dur > 0) {
+          ctx.fillStyle = 'rgba(255,255,255,0.32)'
+          ctx.font = '7px system-ui'
+          ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  wvX, Math.min(pgYc + 9, H - 1))
+          ctx.textAlign = 'right'; ctx.fillText(fmt(dur), wvR, Math.min(pgYc + 9, H - 1))
+        }
 
         // ── Playing indicator — pulsing dot top-right (accent color) ──
         if (playing) {
@@ -2071,20 +2068,29 @@ export default function RoomPage() {
       }
 
       // ── Keep YT audio alive while tab is hidden (PiP active) ──
-      // Chrome may suspend the YT iframe's audio when the tab goes to background.
-      // Every time the tab becomes hidden, forcibly unMute + playVideo so audio continues.
       function onVisibilityChange() {
         if (document.hidden) {
+          // Tab going background — keep audio alive
           try {
             const p = ytPlayerRef.current
             if (!p) return
-            p.unMute?.()
-            p.setVolume?.(100)
-            p.playVideo?.()
-            // Also send postMessage directly to the iframe — bypasses JS timer throttling
+            p.unMute?.(); p.setVolume?.(100)
+            if (roomRef.current?.isPlaying) p.playVideo?.()
             const iframe = document.querySelector('iframe[src*="youtube"]')
             if (iframe?.contentWindow)
               iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+          } catch {}
+        } else {
+          // Tab coming back to foreground — if room says playing, sync the player
+          // (retries that fired while hidden were blocked, so kick again now)
+          try {
+            if (roomRef.current?.isPlaying) {
+              const p = ytPlayerRef.current
+              p?.unMute?.(); p?.setVolume?.(100); p?.playVideo?.()
+              setTimeout(() => {
+                if (roomRef.current?.isPlaying) ytPlayerRef.current?.playVideo?.()
+              }, 400)
+            }
           } catch {}
         }
       }
