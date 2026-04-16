@@ -1631,8 +1631,9 @@ export default function RoomPage() {
         canvasPipRef.current = c
       }
       const canvas = canvasPipRef.current
-      canvas.width = 280; canvas.height = 90
-      const W = canvas.width, H = canvas.height
+      const DPR = Math.min(window.devicePixelRatio || 1, 2)
+      const W = 320, H = 112 // logical dimensions — canvas is DPR× for crispness
+      canvas.width = W * DPR; canvas.height = H * DPR
       const ctx = canvas.getContext('2d')
 
       // ── Animation state ──
@@ -1668,6 +1669,8 @@ export default function RoomPage() {
           if (track?.thumbnail) loadThumb(track.thumbnail)
         }
 
+        // Reset transform each frame so scale doesn't accumulate
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
         ctx.clearRect(0, 0, W, H)
 
         // ── Current time / duration ──
@@ -1680,7 +1683,7 @@ export default function RoomPage() {
         const pct = dur > 0 ? Math.min(1, ct / dur) : 0
 
         // ── Left: album art (square, full height, B&W) ──
-        const artW = H // 128px square
+        const artW = H // 112px square
         if (anim.thumbImg) {
           ctx.filter = 'grayscale(70%)'
           ctx.drawImage(anim.thumbImg, 0, 0, artW, H)
@@ -1695,7 +1698,7 @@ export default function RoomPage() {
           ctx.fillStyle = '#1e1e1e'
           ctx.fillRect(0, 0, artW, H)
           ctx.fillStyle = 'rgba(255,255,255,0.28)'
-          ctx.font = '34px system-ui'
+          ctx.font = '42px system-ui'
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
           ctx.fillText('🎵', artW / 2, H / 2)
         }
@@ -1709,8 +1712,8 @@ export default function RoomPage() {
         ctx.fillStyle = 'rgba(0,0,0,0.06)'
         ctx.fillRect(rX, 0, 1, H)
 
-        const rpX = rX + 14        // content left
-        const rpR = W - 14         // content right
+        const rpX = rX + 12        // content left
+        const rpR = W - 12         // content right
         const rpW = rpR - rpX      // content width
         ctx.textBaseline = 'alphabetic'
 
@@ -1725,13 +1728,13 @@ export default function RoomPage() {
             { idx: activeIdx,     active: true  },
             { idx: activeIdx + 1, active: false },
           ]
-          const lyYs = [10, 19, 28]
+          const lyYs = [12, 24, 36]
           slots.forEach(({ idx, active }, slot) => {
             if (idx < 0 || idx >= lines.length) return
             const raw = lines[idx].text
             const text = raw.length > 44 ? raw.slice(0, 43) + '…' : raw
-            ctx.fillStyle = active ? 'rgba(0,0,0,0.86)' : 'rgba(0,0,0,0.28)'
-            ctx.font = active ? 'bold 8px system-ui' : '7px system-ui'
+            ctx.fillStyle = active ? 'rgba(0,0,0,0.88)' : 'rgba(0,0,0,0.3)'
+            ctx.font = active ? 'bold 10px system-ui' : '8.5px system-ui'
             ctx.textAlign = 'left'
             ctx.fillText(text, rpX, lyYs[slot])
           })
@@ -1741,26 +1744,26 @@ export default function RoomPage() {
         const title = track?.title || 'Nothing playing'
         const shortTitle = title.length > 27 ? title.slice(0, 26) + '…' : title
         ctx.fillStyle = '#111111'
-        ctx.font = 'bold 10px system-ui'
+        ctx.font = 'bold 13px system-ui'
         ctx.textAlign = 'left'
-        ctx.fillText(shortTitle, rpX, 40)
+        ctx.fillText(shortTitle, rpX, 52)
 
         // ── Artist name ──
         const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim()
         const shortArtist = artist.length > 26 ? artist.slice(0, 25) + '…' : artist
         ctx.fillStyle = 'rgba(0,0,0,0.42)'
-        ctx.font = '8px system-ui'
+        ctx.font = '10px system-ui'
         ctx.textAlign = 'left'
-        ctx.fillText(shortArtist, rpX, 51)
+        ctx.fillText(shortArtist, rpX, 65)
 
         // ── Progress timestamps ──
         ctx.fillStyle = 'rgba(0,0,0,0.38)'
-        ctx.font = '7px system-ui'
-        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  rpX, 63)
-        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), rpR, 63)
+        ctx.font = '8px system-ui'
+        ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  rpX, 79)
+        ctx.textAlign = 'right'; ctx.fillText(fmt(dur), rpR, 79)
 
         // ── Progress bar ──
-        const pbY = 68, pbH = 2
+        const pbY = 85, pbH = 3
         ctx.fillStyle = 'rgba(0,0,0,0.10)'
         if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(rpX, pbY, rpW, pbH, 2); ctx.fill() }
         else ctx.fillRect(rpX, pbY, rpW, pbH)
