@@ -2096,26 +2096,34 @@ export default function RoomPage() {
       }
       document.addEventListener('visibilitychange', onVisibilityChange)
 
-      // Also boost audio in the watchdog every second while hidden
+      // Boost audio & unmute every 1 s while tab is hidden
       const origWatchdog = watchdogInterval
+      const forceUnmute = () => {
+        try {
+          const iframe = document.querySelector('iframe[src*="youtube"]')
+          if (iframe?.contentWindow) {
+            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute',     args: [] }), '*')
+            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [100] }), '*')
+          }
+        } catch {}
+      }
       const audioKeepalive = setInterval(() => {
         if (!document.hidden) return
         try {
           const p = ytPlayerRef.current
           if (!p) return
           const state = p.getPlayerState?.()
-          // State 1 = playing — if not playing, kick it
+          // Always unmute via API + postMessage (Chrome can mute new videos at browser level)
+          p.unMute?.()
+          p.setVolume?.(100)
+          forceUnmute()
+          // If not playing and should be, kick playback
           if (state !== 1 && roomRef.current?.isPlaying) {
-            p.unMute?.()
-            p.setVolume?.(100)
             p.playVideo?.()
-          } else if (state === 1) {
-            // Already playing — just ensure unmuted
-            p.unMute?.()
-            p.setVolume?.(100)
+            forceUnmute()
           }
         } catch {}
-      }, 2000)
+      }, 1000)
 
       // Stop animation when PiP is closed
       video.addEventListener('leavepictureinpicture', () => {
@@ -2147,23 +2155,20 @@ export default function RoomPage() {
         try {
           const p = ytPlayerRef.current
           if (!p || !roomRef.current?.isPlaying) return
-          // Guard: stop retrying only if Firestore has moved on to a DIFFERENT track.
-          // Do NOT use p.getVideoData().video_id here — when the tab is hidden the
-          // YouTube iframe is throttled and getVideoData still returns the OLD id for
-          // several seconds after loadVideoById, causing every retry to bail early.
           if (roomRef.current?.currentTrack?.videoId !== targetId) return
           const state = p.getPlayerState?.()
-          if (state !== 1) {
-            p.unMute?.(); p.setVolume?.(volume)
-            p.playVideo?.()
-            // Also postMessage directly to iframe — bypasses IFrame API throttling
-            // when the tab is hidden (Chrome throttles JS timers but not postMessage)
-            try {
-              const iframe = document.querySelector('iframe[src*="youtube"]')
-              if (iframe?.contentWindow)
+          // Always unmute — Chrome can mute new video loads at browser level
+          p.unMute?.(); p.setVolume?.(100)
+          try {
+            const iframe = document.querySelector('iframe[src*="youtube"]')
+            if (iframe?.contentWindow) {
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute',     args: [] }), '*')
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [100] }), '*')
+              if (state !== 1)
                 iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
-            } catch {}
-          }
+            }
+          } catch {}
+          if (state !== 1) p.playVideo?.()
         } catch {}
       }, delay)
     })
@@ -2209,8 +2214,15 @@ export default function RoomPage() {
       // Ensure the keepalive audio is running whenever music starts — it must be
       // active before the user switches tabs, not after.
       initAudioKeepAlive()
-      // Always unmute when playback starts — iOS remutes on every new video load
+      // Always unmute — iOS/Chrome remutes on every new video load, also via postMessage
       try { e.target.unMute?.(); e.target.setVolume?.(volume) } catch {}
+      try {
+        const iframe = document.querySelector('iframe[src*="youtube"]')
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute',     args: [] }), '*')
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [100] }), '*')
+        }
+      } catch {}
     }
     // Use roomRef for a live isHost check — the closed-over `isHost` can be stale
     // if the YouTube event handler hasn't been re-registered since the last render.
