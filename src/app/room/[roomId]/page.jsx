@@ -1855,8 +1855,10 @@ export default function RoomPage() {
         }
 
         // ── ROW 2: Full-width equalizer bars ──
-        const eqCY    = 55
-        const eqMaxH  = 12
+        // Album bottom = sqY+sqSize = 5+40 = 45. Artist text (2-line) at y=42.
+        // eqCY=62, eqMaxH=9 → bars span y=53..71. Clear of everything above.
+        const eqCY    = 62
+        const eqMaxH  = 9
         const now_s   = Date.now() * 0.001
         const eqBW    = 1
         const eqGap   = 2
@@ -1878,7 +1880,7 @@ export default function RoomPage() {
           const cg   = Math.min(255, Math.round(ag + (255 - ag) * wm))
           const cb   = Math.min(255, Math.round(ab + (255 - ab) * wm))
           ctx.shadowColor = `rgb(${cr},${cg},${cb})`
-          ctx.shadowBlur  = 4 + cf * 9
+          ctx.shadowBlur  = 2 + cf * 4   // max=6 — keeps bars visually 1px thin
           ctx.fillStyle   = `rgb(${cr},${cg},${cb})`
           if (ctx.roundRect) {
             ctx.beginPath(); ctx.roundRect(bX, eqCY - h, eqBW, h * 2, 0.5); ctx.fill()
@@ -1889,13 +1891,13 @@ export default function RoomPage() {
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
 
         // ── ROW 3: Lyrics — 4 lines (1 prev + active + 2 next) ──
-        // Bars end at eqCY+eqMaxH = 55+12 = 67. Start lyrics at y=78 (11px breathing room).
-        // 4 lines × 19px spacing = 57px used → last line at y=135, fits in canvas (170px)
+        // Bars end at eqCY+eqMaxH = 62+9 = 71. Start lyrics at y=82 (11px gap).
+        // 4 lines × 18px = last line y=136, fits in canvas (170px)
         const lyrSnap   = lyricsRef.current
         const hasSync   = lyrSnap?.synced && lyrSnap?.lines?.length > 0
         const plainText = (!hasSync && lyrSnap?.plain) ? lyrSnap.plain : null
         const hasPlain  = !!plainText && plainText.trim().length > 10
-        const ly        = [78, 97, 116, 135]   // 19px spacing, clear of bars
+        const ly        = [82, 100, 118, 136]   // 18px spacing, clear of bars
         const dimLyric  = 'rgba(255,255,255,0.38)'  // dim enough to contrast with accent active
         if (hasSync) {
           const lines     = lyrSnap.lines
