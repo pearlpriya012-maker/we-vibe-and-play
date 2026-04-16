@@ -1485,12 +1485,26 @@ export default function RoomPage() {
   // the MediaStream approach silently fail at the worst possible moment.
   // A looping <audio> with a real src stays "active audio" even when hidden.
   function initAudioKeepAlive() {
-    if (keepAliveAudioRef.current) {
-      keepAliveAudioRef.current.play().catch(() => {})
+    // Resume existing Web Audio context if already set up
+    if (keepAliveCtxRef.current) {
+      try { keepAliveCtxRef.current.resume() } catch {}
+      if (keepAliveAudioRef.current) keepAliveAudioRef.current.play().catch(() => {})
       return
     }
     try {
-      // Build a 0.1-second silent WAV (800 samples @ 8 kHz, 8-bit PCM) in memory.
+      // Web Audio API approach — more reliable than HTML Audio for keeping
+      // Chrome's audio context unlocked in background/hidden tabs.
+      // Must be called from a user-gesture context the first time.
+      const ac = new (window.AudioContext || window.webkitAudioContext)()
+      keepAliveCtxRef.current = ac
+      const oscillator = ac.createOscillator()
+      const gain = ac.createGain()
+      gain.gain.value = 0.005  // ~0.5% volume — audible to Chrome, inaudible to humans
+      oscillator.frequency.value = 440
+      oscillator.connect(gain)
+      gain.connect(ac.destination)
+      oscillator.start()
+      // Also keep an HTML Audio as backup (some browsers prefer one over the other)
       const sr = 8000, n = 800
       const buf = new ArrayBuffer(44 + n)
       const dv = new DataView(buf)
@@ -1500,10 +1514,10 @@ export default function RoomPage() {
       dv.setUint16(22, 1, true); dv.setUint32(24, sr, true)
       dv.setUint32(28, sr, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true)
       ws(36, 'data'); dv.setUint32(40, n, true)
-      new Uint8Array(buf, 44).fill(0x80) // 0x80 = silence for 8-bit PCM
+      new Uint8Array(buf, 44).fill(0x80)
       const audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })))
       audio.loop = true
-      audio.volume = 0.001  // must be > 0 — volume=0 makes Chrome ignore it for "active audio" classification
+      audio.volume = 0.01  // 1% — above Chrome's active-audio threshold
       audio.play().catch(() => {})
       keepAliveAudioRef.current = audio
     } catch {}
@@ -1648,6 +1662,9 @@ export default function RoomPage() {
       clearInterval(canvasPipIntervalRef.current) // legacy fallback
       return
     }
+
+    // ── Ensure audio keepalive is running — must happen in user-gesture context ──
+    initAudioKeepAlive()
 
     try {
       // ── Canvas — always recreate so width/height are guaranteed fresh ──
@@ -1958,6 +1975,18 @@ export default function RoomPage() {
           anim.lastTrackId = liveTrackId
           anim.skipFired = false
           if (roomRef.current?.currentTrack?.thumbnail) loadThumb(roomRef.current.currentTrack.thumbnail)
+          // Update mediaSession when track changes while hidden — rAF is suspended
+          try {
+            const t = roomRef.current?.currentTrack
+            if ('mediaSession' in navigator && t) {
+              navigator.mediaSession.metadata = new MediaMetadata({
+                title: t.title || 'We Vibe',
+                artist: (t.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim(),
+                artwork: t.thumbnail ? [{ src: t.thumbnail }] : [],
+              })
+              navigator.mediaSession.playbackState = 'playing'
+            }
+          } catch {}
           // Return immediately — don't check ENDED this tick. The YT player
           // hasn't loaded the new track yet so its state is still ENDED from the
           // previous song, which would fire skipToNext again (double-skip bug).
@@ -2096,7 +2125,9 @@ export default function RoomPage() {
       }
       document.addEventListener('visibilitychange', onVisibilityChange)
 
-      // Boost audio & unmute every 1 s while tab is hidden
+      // Boost audio & unmute every 1 s while tab is hidden.
+      // Also update mediaSession here — rAF (drawFrame) is suspended when hidden
+      // so mediaSession.playbackState/metadata must be kept fresh from this interval.
       const origWatchdog = watchdogInterval
       const forceUnmute = () => {
         try {
@@ -2109,6 +2140,16 @@ export default function RoomPage() {
       }
       const audioKeepalive = setInterval(() => {
         if (!document.hidden) return
+        // Keep Web Audio context alive
+        try { keepAliveCtxRef.current?.resume() } catch {}
+        try { keepAliveAudioRef.current?.play().catch(() => {}) } catch {}
+        // Update mediaSession — rAF is suspended when hidden so we must do it here
+        try {
+          if ('mediaSession' in navigator) {
+            const liveRoom = roomRef.current
+            navigator.mediaSession.playbackState = liveRoom?.isPlaying ? 'playing' : 'paused'
+          }
+        } catch {}
         try {
           const p = ytPlayerRef.current
           if (!p) return
@@ -2141,6 +2182,26 @@ export default function RoomPage() {
   // We fire retries at 400ms / 900ms / 1800ms / 3000ms from the time of the load
   // so the new track auto-plays regardless of when the iframe is ready.
   function loadAndPlay(videoId, startSeconds = 0) {
+    // If tab is hidden, update mediaSession immediately so Chrome knows
+    // audio is active — rAF (drawFrame) is suspended and won't do it.
+    if (document.hidden) {
+      try {
+        const liveTrack = roomRef.current?.currentTrack
+        if ('mediaSession' in navigator) {
+          if (liveTrack) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: liveTrack.title || 'We Vibe',
+              artist: (liveTrack.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim(),
+              artwork: liveTrack.thumbnail ? [{ src: liveTrack.thumbnail }] : [],
+            })
+          }
+          navigator.mediaSession.playbackState = 'playing'
+        }
+      } catch {}
+      // Resume audio keepalive context
+      try { keepAliveCtxRef.current?.resume() } catch {}
+      try { keepAliveAudioRef.current?.play().catch(() => {}) } catch {}
+    }
     try {
       const p = ytPlayerRef.current
       if (!p) return
