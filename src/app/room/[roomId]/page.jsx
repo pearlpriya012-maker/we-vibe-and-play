@@ -904,6 +904,7 @@ export default function RoomPage() {
   const keepAliveCtxRef = useRef(null)      // Web Audio context — keeps tab classified as active audio in background
   const keepAliveAudioRef = useRef(null)    // <audio> element driven by the keepalive stream
   const bgWatchdogRef = useRef(null)        // interval that fights YouTube auto-pause while tab is hidden
+  const lastSkipAtRef = useRef(0)           // timestamp of last skipToNext call — prevents double-skip when watchdog + handleStateChange both fire
   const pipWindowRef = useRef(null)         // Document Picture-in-Picture floating mini-player window
   const pipSyncRef = useRef(null)           // interval that keeps pip DOM in sync with player state
   const canvasPipRef = useRef(null)         // hidden canvas drawn with track info for mobile PiP
@@ -1758,6 +1759,8 @@ export default function RoomPage() {
             const pState = ytPlayerRef.current?.getPlayerState?.()
             if (ytStates && pState === ytStates.ENDED) {
               anim.skipFired = true
+              if (Date.now() - lastSkipAtRef.current < 4000) return // handleStateChange already fired
+              lastSkipAtRef.current = Date.now()
               const liveIsHost = roomRef.current?.hostId === user?.uid
               if (liveIsHost) {
                 skipToNext(roomId).catch(() => {})
@@ -1922,6 +1925,8 @@ export default function RoomPage() {
           await updatePlayback(roomId, { isPlaying: false, currentTime: pauseTime })
         }, 400)
       } else if (e.data === YT.ENDED) {
+        if (Date.now() - lastSkipAtRef.current < 4000) return // watchdog already fired
+        lastSkipAtRef.current = Date.now()
         await skipToNext(roomId)
       }
     } else if (!liveIsHost && e.data === YT.ENDED) {
