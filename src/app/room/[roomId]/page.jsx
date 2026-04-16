@@ -2008,6 +2008,9 @@ export default function RoomPage() {
       if ('mediaSession' in navigator) {
         try {
           navigator.mediaSession.setActionHandler('play', () => {
+            // Immediately update roomRef so keepalive knows we want to play
+            if (roomRef.current) roomRef.current = { ...roomRef.current, isPlaying: true }
+            navigator.mediaSession.playbackState = 'playing'
             // Fire immediately, then retry — Chrome blocks playVideo() on first call when tab is hidden
             const tryPlay = () => {
               try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.setVolume?.(100); ytPlayerRef.current?.playVideo?.() } catch {}
@@ -2026,6 +2029,9 @@ export default function RoomPage() {
             )
           })
           navigator.mediaSession.setActionHandler('pause', () => {
+            // Immediately update roomRef so keepalive stops fighting the pause
+            if (roomRef.current) roomRef.current = { ...roomRef.current, isPlaying: false }
+            navigator.mediaSession.playbackState = 'paused'
             try { ytPlayerRef.current?.pauseVideo?.() } catch {}
             import('firebase/firestore').then(({ updateDoc, doc }) =>
               import('@/lib/firebase').then(({ db }) =>
@@ -2063,12 +2069,13 @@ export default function RoomPage() {
       // ── Keep YT audio alive while tab is hidden (PiP active) ──
       function onVisibilityChange() {
         if (document.hidden) {
-          // Tab going background — keep audio alive
+          // Tab going background — keep audio alive only if room is supposed to be playing
           try {
             const p = ytPlayerRef.current
             if (!p) return
+            if (!roomRef.current?.isPlaying) return
             p.unMute?.(); p.setVolume?.(100)
-            if (roomRef.current?.isPlaying) p.playVideo?.()
+            p.playVideo?.()
             const iframe = document.querySelector('iframe[src*="youtube"]')
             if (iframe?.contentWindow)
               iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
