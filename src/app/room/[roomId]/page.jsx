@@ -1544,10 +1544,10 @@ export default function RoomPage() {
     }
 
     try {
-      // ── Canvas setup (480×270 — sharper on high-DPI) ──
+      // ── Canvas setup (270×480 portrait — matches reference design) ──
       if (!canvasPipRef.current) {
         const c = document.createElement('canvas')
-        c.width = 480; c.height = 270
+        c.width = 270; c.height = 480
         canvasPipRef.current = c
       }
       const canvas = canvasPipRef.current
@@ -1557,11 +1557,11 @@ export default function RoomPage() {
       // ── Animation state ──
       const anim = {
         frame: 0,
-        barHeights: Array.from({ length: 44 }, (_, i) => 0.06 + (i % 7) * 0.05),
-        barTargets: Array.from({ length: 44 }, () => Math.random() * 0.4),
+        barHeights: Array.from({ length: 36 }, (_, i) => 0.06 + (i % 7) * 0.05),
+        barTargets: Array.from({ length: 36 }, () => Math.random() * 0.4),
         thumbImg: null,
         lastTrackId: null,
-        skipFired: false,  // prevents firing skipToNext multiple times per song
+        skipFired: false,
       }
 
       function loadThumb(url) {
@@ -1586,153 +1586,200 @@ export default function RoomPage() {
         if (track?.videoId !== anim.lastTrackId) {
           anim.lastTrackId = track?.videoId || null
           anim.thumbImg = null
-          anim.skipFired = false   // new song — allow watchdog to fire again
+          anim.skipFired = false
           if (track?.thumbnail) loadThumb(track.thumbnail)
         }
 
-        // ── ENDED watchdog: handled by dedicated setInterval below (rAF is
-        // suspended when document.hidden=true so we can't rely on it here) ──
+        // ── ENDED watchdog: handled by dedicated setInterval below ──
 
-        // ── Background ──
-        ctx.fillStyle = '#0a0a0a'
+        // ── Background: dark blue gradient ──
+        const bg = ctx.createLinearGradient(0, 0, 0, H)
+        bg.addColorStop(0, '#1c2f4a')
+        bg.addColorStop(0.5, '#152540')
+        bg.addColorStop(1, '#0c1a30')
+        ctx.fillStyle = bg
         ctx.fillRect(0, 0, W, H)
-        if (anim.thumbImg) {
-          ctx.save()
-          ctx.filter = 'blur(30px) brightness(0.2) saturate(2.5)'
-          ctx.drawImage(anim.thumbImg, -60, -60, W + 120, H + 120)
-          ctx.filter = 'none'
-          ctx.restore()
-          // uniform dark overlay
-          ctx.fillStyle = 'rgba(0,0,0,0.68)'
-          ctx.fillRect(0, 0, W, H)
+
+        // Subtle noise/shimmer overlay
+        ctx.fillStyle = 'rgba(255,255,255,0.012)'
+        for (let y = 0; y < H; y += 3) {
+          const a = 0.005 + 0.01 * Math.sin(anim.frame * 0.04 + y * 0.08)
+          ctx.fillStyle = `rgba(255,255,255,${a})`
+          ctx.fillRect(0, y, W, 1)
         }
 
-        // ── Top 3-px accent bar ──
-        const acc = ctx.createLinearGradient(0, 0, W, 0)
-        acc.addColorStop(0, '#00ff88')
-        acc.addColorStop(0.5, '#00e5ff')
-        acc.addColorStop(1, '#a855f7')
-        ctx.fillStyle = acc
-        ctx.fillRect(0, 0, W, 3)
-
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'alphabetic'
-
-        // ── Row 1 (y≈30): logo left, status right ──
-        ctx.fillStyle = '#00ff88'
+        // ── Header: "Now Playing" ──
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'
         ctx.font = 'bold 13px system-ui'
-        ctx.fillText('WE🕊️ VIBE', 18, 30)
+        ctx.fillText('Now Playing', W / 2, 28)
 
-        // Pulsing dot + label
-        const pulse = 0.5 + 0.5 * Math.sin(anim.frame * 0.1)
-        const dR = playing ? 3.5 + pulse * 1.5 : 3
-        const dX = W - 18, dY = 23
-        ctx.textAlign = 'right'
-        ctx.fillStyle = playing ? '#00ff88' : '#555'
-        ctx.font = '10px system-ui'
-        ctx.fillText(playing ? 'PLAYING' : 'PAUSED', dX - dR * 2 - 5, 27)
-        ctx.beginPath(); ctx.arc(dX, dY, dR, 0, Math.PI * 2)
-        ctx.fillStyle = playing ? `rgba(0,255,136,${0.65 + pulse * 0.35})` : '#333'
+        // ── Album art circle ──
+        const cx = W / 2, cy = 168, r = 88
+
+        // Glow ring (pulsing when playing)
+        const pulse = 0.5 + 0.5 * Math.sin(anim.frame * 0.07)
+        if (playing) {
+          const glowR = r + 18 + pulse * 8
+          const glow = ctx.createRadialGradient(cx, cy, r, cx, cy, glowR)
+          glow.addColorStop(0, 'rgba(130, 90, 230, 0.35)')
+          glow.addColorStop(1, 'rgba(130, 90, 230, 0)')
+          ctx.fillStyle = glow
+          ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI * 2); ctx.fill()
+        }
+
+        // Frosted glass card behind circle
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(cx, cy, r + 10, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(255,255,255,0.06)'
         ctx.fill()
-        ctx.textAlign = 'left'
+        ctx.restore()
 
-        // Thin separator
-        ctx.strokeStyle = 'rgba(255,255,255,0.07)'
-        ctx.lineWidth = 1
-        ctx.beginPath(); ctx.moveTo(18, 40); ctx.lineTo(W - 18, 40); ctx.stroke()
+        // Outer ring
+        ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2)
+        ctx.strokeStyle = playing ? `rgba(150,100,255,${0.5 + pulse * 0.4})` : 'rgba(255,255,255,0.12)'
+        ctx.lineWidth = 2; ctx.stroke()
 
-        // ── Row 2 (y≈62): track title ──
+        // Album image clipped to circle
+        ctx.save()
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip()
+        if (anim.thumbImg) {
+          ctx.drawImage(anim.thumbImg, cx - r, cy - r, r * 2, r * 2)
+          // Subtle inner vignette
+          const vig = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r)
+          vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.25)')
+          ctx.fillStyle = vig; ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+        } else {
+          ctx.fillStyle = '#1a3050'; ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+          ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '44px system-ui'
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText('🎵', cx, cy)
+        }
+        ctx.restore()
+
+        // ── Track title ──
         const title = track?.title || 'Nothing playing'
-        // Truncate to fit full width (≈36 chars at 14px bold)
-        const shortTitle = title.length > 36 ? title.slice(0, 36) + '…' : title
+        const shortTitle = title.length > 20 ? title.slice(0, 20) + '…' : title
         ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 17px system-ui'
-        ctx.fillText(shortTitle, 18, 62)
+        ctx.font = 'bold 19px system-ui'
+        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+        ctx.fillText(shortTitle, W / 2, 282)
 
-        // ── Row 3 (y≈80): artist ──
+        // ── Artist name ──
         const artist = (track?.channelTitle || '').replace(/\s*-\s*Topic$/i, '')
-        const shortArtist = artist.length > 40 ? artist.slice(0, 40) + '…' : artist
-        ctx.fillStyle = '#777'
+        const shortArtist = artist.length > 26 ? artist.slice(0, 26) + '…' : artist
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'
         ctx.font = '12px system-ui'
-        ctx.fillText(shortArtist, 18, 80)
+        ctx.fillText(shortArtist, W / 2, 300)
 
-        // ── Waveform: symmetric, full width, center y=148 ──
-        const nBars = 44, bW = 5, bGap = 5
+        // ── Waveform bars (centered) ──
+        const nBars = 36, bW = 3, bGap = 3.5
         const bTotal = nBars * (bW + bGap) - bGap
         const bStartX = (W - bTotal) / 2
-        const wCY = 148, maxHalf = 42
+        const wY = 328, maxH = 20
 
         anim.barTargets = anim.barTargets.map((t, i) => {
-          if (Math.random() < 0.1)
-            return playing ? 0.18 + Math.random() * 0.82 : 0.02 + Math.random() * 0.05
+          if (Math.random() < 0.09)
+            return playing ? 0.18 + Math.random() * 0.82 : 0.04 + Math.random() * 0.08
           return t
         })
         anim.barHeights = anim.barHeights.map((h, i) => h + (anim.barTargets[i] - h) * 0.14)
 
         for (let i = 0; i < nBars; i++) {
-          const bh = Math.max(2, anim.barHeights[i] * maxHalf)
+          const bh = Math.max(2, anim.barHeights[i] * maxH)
           const bx = bStartX + i * (bW + bGap)
-
+          const ratio = i / nBars
           if (playing) {
-            // Upper half: green → cyan
-            const ug = ctx.createLinearGradient(0, wCY - bh, 0, wCY)
-            ug.addColorStop(0, '#00ff88'); ug.addColorStop(1, 'rgba(0,229,255,0.5)')
-            ctx.fillStyle = ug
-            ctx.beginPath()
-            if (ctx.roundRect) ctx.roundRect(bx, wCY - bh, bW, bh, [2, 2, 0, 0])
-            else ctx.rect(bx, wCY - bh, bW, bh)
-            ctx.fill()
-            // Lower half: cyan → purple
-            const dg = ctx.createLinearGradient(0, wCY, 0, wCY + bh)
-            dg.addColorStop(0, 'rgba(0,229,255,0.5)'); dg.addColorStop(1, '#a855f7')
-            ctx.fillStyle = dg
-            ctx.beginPath()
-            if (ctx.roundRect) ctx.roundRect(bx, wCY, bW, bh, [0, 0, 2, 2])
-            else ctx.rect(bx, wCY, bW, bh)
-            ctx.fill()
+            const barGrad = ctx.createLinearGradient(0, wY - bh, 0, wY + bh)
+            if (ratio < 0.4) {
+              barGrad.addColorStop(0, '#7b5fe8'); barGrad.addColorStop(1, '#5b8ce8')
+            } else if (ratio < 0.7) {
+              barGrad.addColorStop(0, '#5b8ce8'); barGrad.addColorStop(1, '#3ab4f5')
+            } else {
+              barGrad.addColorStop(0, '#3ab4f5'); barGrad.addColorStop(1, '#7b5fe8')
+            }
+            ctx.fillStyle = barGrad
           } else {
-            // Paused: dim single bar
-            ctx.fillStyle = 'rgba(255,255,255,0.1)'
-            ctx.beginPath()
-            if (ctx.roundRect) ctx.roundRect(bx, wCY - bh, bW, bh * 2, 2)
-            else ctx.rect(bx, wCY - bh, bW, bh * 2)
-            ctx.fill()
+            ctx.fillStyle = 'rgba(255,255,255,0.12)'
           }
+          ctx.beginPath()
+          if (ctx.roundRect) ctx.roundRect(bx, wY - bh, bW, bh * 2, 2)
+          else ctx.rect(bx, wY - bh, bW, bh * 2)
+          ctx.fill()
         }
 
-        // Center axis line
-        ctx.strokeStyle = playing ? 'rgba(0,255,136,0.25)' : 'rgba(255,255,255,0.05)'
-        ctx.lineWidth = 1
-        ctx.beginPath(); ctx.moveTo(bStartX, wCY); ctx.lineTo(bStartX + bTotal, wCY); ctx.stroke()
-
-        // ── Progress bar (y=218) ──
+        // ── Progress bar + timestamps ──
         try {
           const p = ytPlayerRef.current
           const ct = (typeof p?.getCurrentTime === 'function' ? p.getCurrentTime() : null) ?? 0
           const dur = (typeof p?.getDuration === 'function' ? p.getDuration() : null) ?? 0
           const pct = dur > 0 ? Math.min(1, ct / dur) : 0
-          const pbX = 18, pbW = W - 36, pbY = 218, pbH = 4
+          const pbX = 22, pbW = W - 44, pbY = 362, pbH = 3
 
-          ctx.fillStyle = 'rgba(255,255,255,0.1)'
+          // Timestamps
+          ctx.fillStyle = 'rgba(255,255,255,0.38)'
+          ctx.font = '9px system-ui'
+          ctx.textBaseline = 'alphabetic'
+          ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  pbX, pbY - 5)
+          ctx.textAlign = 'right'; ctx.fillText(fmt(dur), pbX + pbW, pbY - 5)
+
+          // Track bg
+          ctx.fillStyle = 'rgba(255,255,255,0.10)'
           if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, pbY, pbW, pbH, 2); ctx.fill() }
           else ctx.fillRect(pbX, pbY, pbW, pbH)
 
           if (pct > 0) {
             const pfg = ctx.createLinearGradient(pbX, 0, pbX + pbW, 0)
-            pfg.addColorStop(0, '#00ff88'); pfg.addColorStop(1, '#00e5ff')
+            pfg.addColorStop(0, '#7b5fe8'); pfg.addColorStop(1, '#3ab4f5')
             ctx.fillStyle = pfg
             if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(pbX, pbY, pbW * pct, pbH, 2); ctx.fill() }
             else ctx.fillRect(pbX, pbY, pbW * pct, pbH)
             // Playhead dot
-            ctx.beginPath(); ctx.arc(pbX + pbW * pct, pbY + pbH / 2, 4.5, 0, Math.PI * 2)
+            ctx.beginPath(); ctx.arc(pbX + pbW * pct, pbY + pbH / 2, 5, 0, Math.PI * 2)
             ctx.fillStyle = '#fff'; ctx.fill()
           }
-
-          ctx.fillStyle = '#555'; ctx.font = '10px system-ui'; ctx.textBaseline = 'alphabetic'
-          ctx.textAlign = 'left';  ctx.fillText(fmt(ct),  pbX, H - 6)
-          ctx.textAlign = 'right'; ctx.fillText(fmt(dur), pbX + pbW, H - 6)
-          ctx.textAlign = 'left'
         } catch {}
+
+        // ── Controls row ──
+        const ctY = 420
+        // Prev button
+        ctx.fillStyle = 'rgba(255,255,255,0.10)'
+        ctx.beginPath(); ctx.arc(W / 2 - 72, ctY, 22, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'
+        ctx.font = '15px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText('⏮', W / 2 - 72, ctY + 1)
+
+        // Play/pause button (large, purple gradient + glow)
+        if (playing) {
+          ctx.fillStyle = `rgba(120,80,220,${0.18 + pulse * 0.12})`
+          ctx.beginPath(); ctx.arc(W / 2, ctY, 42, 0, Math.PI * 2); ctx.fill()
+        }
+        const playGrad = ctx.createRadialGradient(W / 2 - 6, ctY - 6, 0, W / 2, ctY, 28)
+        playGrad.addColorStop(0, '#a57ef5')
+        playGrad.addColorStop(1, '#6535d1')
+        ctx.fillStyle = playGrad
+        ctx.beginPath(); ctx.arc(W / 2, ctY, 28, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#ffffff'
+        ctx.font = '17px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(playing ? '⏸' : '▶', W / 2, ctY + 1)
+
+        // Next button
+        ctx.fillStyle = 'rgba(255,255,255,0.10)'
+        ctx.beginPath(); ctx.arc(W / 2 + 72, ctY, 22, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'
+        ctx.font = '15px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText('⏭', W / 2 + 72, ctY + 1)
+
+        // ── Bottom row: shuffle · Lyrics · repeat ──
+        ctx.font = '13px system-ui'; ctx.textBaseline = 'middle'
+        ctx.fillStyle = 'rgba(255,255,255,0.30)'
+        ctx.textAlign = 'left';   ctx.fillText('⇄', 26, 460)
+        ctx.textAlign = 'right';  ctx.fillText('↺', W - 26, 460)
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'
+        ctx.font = '11px system-ui'; ctx.textAlign = 'center'
+        ctx.fillText('Lyrics', W / 2, 460)
       }
 
       // ── Animation loop ──
