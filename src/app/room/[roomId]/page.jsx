@@ -2375,6 +2375,141 @@ export default function RoomPage() {
     )
   }
 
+  if (isMobile) {
+    const MOBILE_TABS = [
+      { id: 'player', icon: musicMode ? '🎵' : '📺', label: 'Player' },
+      { id: 'queue',  icon: '🎶', label: 'Queue' },
+      { id: 'chat',   icon: '💬', label: 'Chat' },
+      { id: 'people', icon: '👥', label: 'People' },
+      { id: 'ai',     icon: '🤖', label: 'AI' },
+    ]
+    return (
+      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', background: 'var(--bg)' }}>
+        <div className="grid-bg" />
+
+        {/* Mobile Header */}
+        <header style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', backdropFilter: 'blur(20px)', background: 'rgba(13,13,13,0.95)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Link href="/dashboard" style={{ fontFamily: 'Oswald', fontSize: '1.1rem', fontWeight: 700, color: 'var(--green)', textDecoration: 'none', textShadow: '0 0 12px rgba(0,255,136,0.4)' }}>WE🕊️</Link>
+            <div style={{ fontFamily: 'Oswald', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-dim)' }}>{room.mode === 'music' ? '🎵' : '📺'} {room.name || 'ROOM'}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={async () => { 
+              const newMode = !musicMode
+              setMusicMode(newMode)
+              await updateMusicMode(roomId, newMode)
+            }} style={{ width: 32, height: 32, borderRadius: 8, background: musicMode ? 'rgba(0,255,136,0.08)' : 'rgba(52,152,219,0.08)', border: `1px solid ${musicMode ? 'rgba(0,255,136,0.3)' : 'rgba(52,152,219,0.3)'}`, cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {musicMode ? '🎵' : '📺'}
+            </button>
+            <button onClick={copyCode} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'Oswald', letterSpacing: '0.1em', color: 'var(--green)', fontSize: '0.75rem' }}>
+              {copied ? '✅' : '📋'} {room.roomCode}
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', borderRadius: 8, padding: '4px 8px' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 6px var(--green)', display: 'inline-block' }} />
+              <span style={{ fontFamily: 'Oswald', fontSize: '0.7rem', color: 'var(--green)' }}>{room.participants?.length || 0}</span>
+            </div>
+            <button onClick={handleLeave} style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(233,30,99,0.1)', border: '1px solid rgba(233,30,99,0.3)', color: 'var(--pink)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+        </header>
+
+        {/* Mobile Content Area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
+
+          {/* ── Participants strip (top) ── */}
+          <div style={{ flexShrink: 0, borderBottom: '1px solid var(--border)', padding: '7px 12px', background: 'rgba(13,13,13,0.7)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+              <style>{'.hide-scrollbar::-webkit-scrollbar{display:none}'}</style>
+              {isHost && (
+                <>
+                  <div onClick={() => toggleParticipantQueueAccess(roomId, !room.participantsCanAddToQueue)}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 8, border: `1px solid ${room.participantsCanAddToQueue ? 'rgba(0,255,136,0.4)' : 'var(--border)'}`, background: room.participantsCanAddToQueue ? 'rgba(0,255,136,0.08)' : 'transparent', cursor: 'pointer' }}>
+                    <div style={{ width: 26, height: 14, borderRadius: 7, background: room.participantsCanAddToQueue ? 'var(--green)' : 'rgba(255,255,255,0.12)', position: 'relative', flexShrink: 0, transition: 'background 0.3s' }}>
+                      <div style={{ position: 'absolute', top: 2, left: room.participantsCanAddToQueue ? 13 : 2, width: 10, height: 10, borderRadius: '50%', background: room.participantsCanAddToQueue ? '#000' : 'var(--text-dim)', transition: 'left 0.3s' }} />
+                    </div>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.56rem', letterSpacing: '0.07em', textTransform: 'uppercase', color: room.participantsCanAddToQueue ? 'var(--green)' : 'var(--text-dim)', whiteSpace: 'nowrap' }}>Guests {room.participantsCanAddToQueue ? 'Can Add' : 'View Only'}</span>
+                  </div>
+                  <div onClick={() => toggleParticipantFullControl(roomId, !room.participantsFullControl)}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 8, border: `1px solid ${room.participantsFullControl ? 'rgba(168,85,247,0.5)' : 'var(--border)'}`, background: room.participantsFullControl ? 'rgba(168,85,247,0.1)' : 'transparent', cursor: 'pointer' }}>
+                    <div style={{ width: 26, height: 14, borderRadius: 7, background: room.participantsFullControl ? '#a855f7' : 'rgba(255,255,255,0.12)', position: 'relative', flexShrink: 0, transition: 'background 0.3s' }}>
+                      <div style={{ position: 'absolute', top: 2, left: room.participantsFullControl ? 13 : 2, width: 10, height: 10, borderRadius: '50%', background: room.participantsFullControl ? '#fff' : 'var(--text-dim)', transition: 'left 0.3s' }} />
+                    </div>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.56rem', letterSpacing: '0.07em', textTransform: 'uppercase', color: room.participantsFullControl ? '#a855f7' : 'var(--text-dim)', whiteSpace: 'nowrap' }}>Full Access {room.participantsFullControl ? 'ON' : 'OFF'}</span>
+                  </div>
+                </>
+              )}
+              {[...(room.participants || [])].sort((a, b) => a.uid === room.hostId ? -1 : b.uid === room.hostId ? 1 : 0).map(p => (
+                <div key={p.uid} style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  <div style={{ position: 'relative' }}>
+                    <Avatar user={p} size={26} />
+                    <span style={{ position: 'absolute', bottom: -1, right: -1, width: 7, height: 7, borderRadius: '50%', background: 'var(--green)', border: '1px solid var(--bg)', boxShadow: '0 0 4px var(--green)' }} />
+                  </div>
+                  <span style={{ fontSize: '0.5rem', color: p.uid === user?.uid ? 'var(--green)' : 'var(--text-dim)', maxWidth: 36, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.uid === room.hostId ? '⭐' : ''}{p.displayName?.split(' ')[0] || 'User'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Compact Player ── */}
+          <div style={{ flexShrink: 0, borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {PlayerContent({ compact: true })}
+          </div>
+
+          {/* ── Tab Bar ── */}
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(13,13,13,0.8)', overflowX: 'auto', scrollbarWidth: 'none' }}>
+            <style>{`#mob-tabs::-webkit-scrollbar{display:none}`}</style>
+            <div id="mob-tabs" style={{ display: 'flex', width: '100%' }}>
+              {[['search','🔍','Search'],['queue','🎵','Queue'],['playlists','📋','Playlist'],['aibond','🐻‍❄️','AI Bond'],['chat','💬','Chat'],['lyrics','📝','Lyrics']].map(([id, icon, label]) => {
+                const unread = id === 'chat' && floatMsg
+                return (
+                  <button key={id} onClick={() => setMobileTab(id)}
+                    style={{ flex: 1, minWidth: 56, padding: '9px 4px 7px', background: 'transparent', border: 'none', borderBottom: `2px solid ${mobileTab === id ? 'var(--green)' : 'transparent'}`, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, position: 'relative', transition: 'border-color 0.2s' }}>
+                    <span style={{ fontSize: '1rem', filter: mobileTab === id ? 'drop-shadow(0 0 5px rgba(0,255,136,0.7))' : 'none' }}>{icon}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.5rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: mobileTab === id ? 'var(--green)' : 'var(--text-dim)' }}>{label}</span>
+                    {unread && <span style={{ position: 'absolute', top: 5, right: '18%', width: 7, height: 7, borderRadius: '50%', background: 'var(--pink)', boxShadow: '0 0 6px var(--pink)' }} />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ── Tab Content ── */}
+          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+            <div style={{ display: mobileTab === 'search' || mobileTab === 'queue' || mobileTab === 'playlists' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <SearchAndQueue room={room} isHost={canFullControl} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => canFullControl && removeFromQueue(roomId, i)} ytAccessToken={ytToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} hideTabs={true} roomId={roomId} playedHistory={room.playedHistory || []} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} onTokenExpired={refreshYtToken} />
+            </div>
+            <div style={{ display: mobileTab === 'aibond' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={ytToken} />
+            </div>
+            <div style={{ display: mobileTab === 'chat' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <ChatPanel roomId={roomId} messages={messages} currentUser={user} />
+            </div>
+            <div style={{ display: mobileTab === 'lyrics' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <LyricsPanel lines={lyrics.lines} plain={lyrics.plain} synced={lyrics.synced} loading={lyrics.loading} currentTime={currentTime} />
+            </div>
+          </div>
+
+          {/* ── Floating new message bubble ── */}
+          {floatMsg && mobileTab !== 'chat' && (
+            <div onClick={() => setMobileTab('chat')}
+              style={{ position: 'absolute', bottom: 12, left: 12, right: 12, zIndex: 30, background: 'rgba(13,13,13,0.97)', border: '1px solid rgba(233,30,99,0.35)', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 4px 24px rgba(0,0,0,0.7)', animation: 'slideUpFade 0.3s ease' }}>
+              <style>{`@keyframes slideUpFade{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+              <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(233,30,99,0.2)', border: '1px solid rgba(233,30,99,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Oswald', fontWeight: 700, fontSize: '0.7rem', color: 'var(--pink)', flexShrink: 0 }}>{floatMsg.displayName?.charAt(0).toUpperCase()}</div>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <span style={{ fontFamily: 'Oswald', fontSize: '0.68rem', color: 'var(--pink)', marginRight: 6 }}>{floatMsg.displayName}</span>
+                <span style={{ fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', maxWidth: '70%', verticalAlign: 'bottom' }}>{floatMsg.text}</span>
+              </div>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', flexShrink: 0 }}>💬</span>
+            </div>
+          )}
+
+        </div>
+      </div>
+    )
+  }
+
+
   // ══════════════════════════════════════════
   //  WATCH URL ROOM — MOBILE
   // ══════════════════════════════════════════
