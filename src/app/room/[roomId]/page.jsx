@@ -1772,60 +1772,166 @@ export default function RoomPage() {
 
     // ════════════════════════════════════════════════════════
     //  PRIMARY: Document Picture-in-Picture (Chrome 116+)
-    //  Exact pixel dimensions + real HTML buttons in popup.
+    //  HTML overlay layout: art | title/artist/controls + progress bar + lyrics
     // ════════════════════════════════════════════════════════
     if ('documentPictureInPicture' in window) {
       try {
-        const H_CANVAS = 66, H_BAR = 44
-        const pipWin = await window.documentPictureInPicture.requestWindow({ width: W, height: H_CANVAS + H_BAR })
-        pipWin.document.body.style.cssText = 'margin:0;padding:0;overflow:hidden;background:#0a0a12;display:flex;flex-direction:column;'
+        // Height: top section (~68px) + progress (3px) + 3 lyric lines (66px) + padding = ~155px
+        const H_INIT = pipLyricsRef.current ? 155 : 78
+        const pipWin = await window.documentPictureInPicture.requestWindow({ width: W, height: H_INIT })
+        const d = pipWin.document
+        d.body.style.cssText = 'margin:0;padding:0;overflow:hidden;background:#0a0a12;height:100%;'
 
-        // Track info canvas
-        const canvas = pipWin.document.createElement('canvas')
-        canvas.width = W; canvas.height = H_CANVAS
-        canvas.style.cssText = `display:block;width:${W}px;height:${H_CANVAS}px;flex-shrink:0;`
-        pipWin.document.body.appendChild(canvas)
+        // ── Styles ──
+        const sty = d.createElement('style')
+        sty.textContent = `
+          *{box-sizing:border-box}
+          html,body{height:100%;overflow:hidden;font-family:system-ui,-apple-system,sans-serif}
+          #root{height:100%;display:flex;flex-direction:column}
+          #top{display:flex;align-items:flex-start;gap:8px;padding:8px;flex-shrink:0}
+          #part{width:52px;height:52px;border-radius:6px;object-fit:cover;flex-shrink:0;background:#1a1a2e;border:1px solid rgba(255,255,255,0.12)}
+          #info{flex:1;min-width:0;display:flex;flex-direction:column;padding-top:2px}
+          #ttl{font-size:11px;font-weight:700;color:#fff;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          #arti{font-size:9px;color:rgba(255,255,255,0.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 5px}
+          #ctrl{display:flex;align-items:center;gap:4px}
+          .cb{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:#fff;font-size:11px;padding:0;cursor:pointer;border-radius:5px;display:flex;align-items:center;justify-content:center;line-height:1}
+          #pw{flex-shrink:0;height:3px;background:rgba(255,255,255,0.1);cursor:pointer;position:relative}
+          #pf{height:100%;width:0;background:var(--ac,#f97316);transition:width 0.25s linear}
+          #lyr{flex:1;overflow:hidden;padding:5px 8px 4px;display:none;flex-direction:column;gap:1px;min-height:0}
+          .ll{font-size:10px;line-height:21px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,0.32)}
+          .ll.a{color:var(--ac,#f97316);font-weight:700}
+          .ll.n{color:rgba(255,255,255,0.65)}
+        `
+        d.head.appendChild(sty)
 
-        // Controls bar with real HTML buttons
-        const bar = pipWin.document.createElement('div')
-        bar.style.cssText = `display:flex;align-items:center;justify-content:center;gap:8px;height:${H_BAR}px;background:rgba(0,0,0,0.88);padding:0 8px;flex-shrink:0;border-top:1px solid rgba(255,255,255,0.08);`
-        const mkBtn = (html, title, bg) => {
-          const b = pipWin.document.createElement('button')
-          b.innerHTML = html; b.title = title
-          b.style.cssText = `background:${bg||'rgba(255,255,255,0.08)'};border:1px solid rgba(255,255,255,0.12);color:#fff;font-size:14px;width:34px;height:28px;border-radius:7px;cursor:pointer;line-height:1;padding:0;`
-          return b
+        // ── DOM ──
+        d.body.innerHTML = `
+          <div id="root">
+            <div id="top">
+              <img id="part" />
+              <div id="info">
+                <div id="ttl">Loading\u2026</div>
+                <div id="arti"></div>
+                <div id="ctrl">
+                  <button class="cb" id="b-bk" style="width:26px;height:20px" title="-10s">\u23ea</button>
+                  <button class="cb" id="b-pl" style="width:32px;height:20px;background:rgba(0,255,136,0.18)" title="Play/Pause">\u25b6</button>
+                  <button class="cb" id="b-fw" style="width:26px;height:20px" title="+10s">\u23e9</button>
+                  <button class="cb" id="b-ly" style="width:26px;height:20px" title="Lyrics">\uD83C\uDF99</button>
+                </div>
+              </div>
+            </div>
+            <div id="pw"><div id="pf"></div></div>
+            <div id="lyr"></div>
+          </div>
+        `
+
+        const artEl  = d.getElementById('part')
+        const ttlEl  = d.getElementById('ttl')
+        const artEl2 = d.getElementById('arti')
+        const pfEl   = d.getElementById('pf')
+        const lyrEl  = d.getElementById('lyr')
+        const bBk    = d.getElementById('b-bk')
+        const bPl    = d.getElementById('b-pl')
+        const bFw    = d.getElementById('b-fw')
+        const bLy    = d.getElementById('b-ly')
+
+        const setAccent = () => {
+          const css = `rgb(${anim.accent[0]},${anim.accent[1]},${anim.accent[2]})`
+          d.body.style.setProperty('--ac', css)
+          artEl.style.borderColor = `rgba(${anim.accent[0]},${anim.accent[1]},${anim.accent[2]},0.45)`
         }
-        // ⏪ -10s
-        const btnBack = mkBtn('⏪', '-10s')
-        btnBack.onclick = () => { try { const p=ytPlayerRef.current; p?.seekTo?.(Math.max(0,(p?.getCurrentTime?.()||0)-10),true) } catch {} }
-        // ▶/⏸ play-pause
-        const btnPlay = mkBtn(roomRef.current?.isPlaying ? '⏸' : '▶', 'Play/Pause', 'rgba(0,255,136,0.2)')
-        btnPlay.style.width = '40px'
-        const refreshPlay = () => { btnPlay.innerHTML = roomRef.current?.isPlaying ? '⏸' : '▶' }
-        btnPlay.onclick = () => {
-          const playing = roomRef.current?.isPlaying
-          try { if (playing) ytPlayerRef.current?.pauseVideo?.(); else { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.playVideo?.() } } catch {}
-          import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{isPlaying:!playing}).catch(()=>{})))
+        setAccent()
+
+        // ── Button handlers ──
+        bBk.onclick = () => { try { const p=ytPlayerRef.current; p?.seekTo?.(Math.max(0,(p?.getCurrentTime?.()||0)-10),true) } catch {} }
+        bFw.onclick = () => { try { const p=ytPlayerRef.current; const dr=p?.getDuration?.()||0; const t=(p?.getCurrentTime?.()||0)+10; p?.seekTo?.(dr>0?Math.min(dr,t):t,true) } catch {} }
+        bPl.onclick = () => {
+          const pl = roomRef.current?.isPlaying
+          try { if (pl) ytPlayerRef.current?.pauseVideo?.(); else { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.playVideo?.() } } catch {}
+          import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{isPlaying:!pl}).catch(()=>{})))
         }
-        // ⏩ +10s
-        const btnFwd = mkBtn('⏩', '+10s')
-        btnFwd.onclick = () => { try { const p=ytPlayerRef.current; const d=p?.getDuration?.()||0; const t=(p?.getCurrentTime?.()||0)+10; p?.seekTo?.(d>0?Math.min(d,t):t,true) } catch {} }
-        // 🎤/🔇 lyrics toggle
-        const btnLyr = mkBtn(pipLyricsRef.current ? '🎤' : '🔇', 'Toggle lyrics', pipLyricsRef.current ? 'rgba(249,115,22,0.3)' : 'rgba(255,255,255,0.08)')
-        btnLyr.onclick = () => {
+        bLy.onclick = () => {
           const v = !pipLyricsRef.current
           pipLyricsRef.current = v; setPipLyricsOn(v)
-          btnLyr.innerHTML = v ? '🎤' : '🔇'
-          btnLyr.style.background = v ? 'rgba(249,115,22,0.3)' : 'rgba(255,255,255,0.08)'
+          bLy.innerHTML = v ? '\uD83C\uDF99' : '\uD83D\uDD07'
+          bLy.style.background = v ? 'rgba(249,115,22,0.28)' : 'rgba(255,255,255,0.08)'
+          lyrEl.style.display = v ? 'flex' : 'none'
         }
-        bar.append(btnBack, btnPlay, btnFwd, btnLyr)
-        pipWin.document.body.appendChild(bar)
+        // Init lyrics toggle state
+        if (!pipLyricsRef.current) { bLy.innerHTML = '\uD83D\uDD07' }
+        else { bLy.style.background = 'rgba(249,115,22,0.28)'; lyrEl.style.display = 'flex' }
 
-        const ctx = canvas.getContext('2d')
-        const drawFrame = makeDrawFrame(ctx, H_CANVAS)
-        let rafId = null, lastIsPlaying = null
+        // Seekable progress bar
+        d.getElementById('pw').onclick = ev => {
+          const r = ev.currentTarget.getBoundingClientRect()
+          const pct = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width))
+          try { const p=ytPlayerRef.current; const dr=p?.getDuration?.()||0; if (dr>0) p?.seekTo?.(dr*pct,true) } catch {}
+        }
+
+        // ── Per-frame update ──
+        let prevAcStr = '', lastLyrHash = ''
+        const updateUI = () => {
+          const liveRoom = roomRef.current
+          const track    = liveRoom?.currentTrack
+          const playing  = liveRoom?.isPlaying
+
+          // Accent color
+          const acStr = `${anim.accent[0]},${anim.accent[1]},${anim.accent[2]}`
+          if (acStr !== prevAcStr) { prevAcStr = acStr; setAccent() }
+
+          // Track change
+          if (track?.videoId !== anim.lastTrackId) {
+            anim.lastTrackId = track?.videoId || null; anim.skipFired = false
+            ttlEl.textContent  = track?.title || 'Nothing playing'
+            artEl2.textContent = (track?.channelTitle||'').replace(/\s*-\s*Topic$/i,'').trim()
+            if (track?.thumbnail) { artEl.src = track.thumbnail; artEl.style.display = 'block'; loadThumb(track.thumbnail) }
+            else { artEl.src = ''; artEl.style.display = 'none' }
+            try {
+              if ('mediaSession' in navigator && track) {
+                navigator.mediaSession.metadata = new MediaMetadata({ title: track.title||'We Vibe', artist: artEl2.textContent, artwork: track.thumbnail?[{src:track.thumbnail}]:[] })
+              }
+            } catch {}
+          }
+          try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused' } catch {}
+
+          // Play/pause button
+          bPl.innerHTML = playing ? '\u23f8' : '\u25b6'
+
+          // Progress bar
+          let ct = 0, dr = 0
+          try { const p=ytPlayerRef.current; ct=p?.getCurrentTime?.()||0; dr=p?.getDuration?.()||0 } catch {}
+          pfEl.style.width = (dr > 0 ? Math.min(100, (ct/dr)*100) : 0) + '%'
+
+          // Lyrics (only update when visible)
+          if (pipLyricsRef.current) {
+            const maxLines = Math.max(3, Math.floor((lyrEl.offsetHeight || 66) / 21))
+            const lyrSnap  = lyricsRef.current
+            const hasSync  = lyrSnap?.synced && lyrSnap?.lines?.length > 0
+            let rows = []
+            if (hasSync) {
+              const all = lyrSnap.lines
+              const ai  = all.reduce((best,l,i) => l.time <= ct ? i : best, 0)
+              const s   = Math.max(0, ai - 1), e = Math.min(all.length, s + maxLines)
+              rows = all.slice(s,e).map((l,i) => ({ t:l.text, c:(s+i)===ai ? 'a' : (s+i)===ai+1 ? 'n' : '' }))
+            } else if (lyrSnap?.plain?.trim().length > 4) {
+              const pl = lyrSnap.plain.split('\n').map(l=>l.trim()).filter(l=>l)
+              const pi = dr > 5 ? Math.min(pl.length-1, Math.floor((ct/dr)*pl.length)) : 0
+              const s  = Math.max(0, pi-1), e = Math.min(pl.length, s+maxLines)
+              rows = pl.slice(s,e).map((t,i) => ({ t, c:(s+i)===pi ? 'a' : '' }))
+            } else {
+              rows = [{ t:'No lyrics available', c:'' }]
+            }
+            const h = rows.map(r => r.c + r.t).join('|')
+            if (h !== lastLyrHash) {
+              lastLyrHash = h
+              lyrEl.innerHTML = rows.map(r => `<div class="ll ${r.c}">${r.t.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`).join('')
+            }
+          }
+        }
+
+        let rafId = null
         const loop = () => {
-          try { drawFrame(); const np=roomRef.current?.isPlaying; if (np!==lastIsPlaying){lastIsPlaying=np;refreshPlay()} } catch(e){console.warn('[PiP]',e)}
+          try { updateUI() } catch(e) { console.warn('[PiP]',e) }
           rafId = pipWin.requestAnimationFrame(loop)
         }
         rafId = pipWin.requestAnimationFrame(loop)
