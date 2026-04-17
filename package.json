@@ -24,6 +24,9 @@
     "react-hot-toast": "^2.4.1",
     "react-youtube": "^10.1.0"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
