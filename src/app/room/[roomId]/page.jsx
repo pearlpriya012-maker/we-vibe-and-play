@@ -1563,22 +1563,8 @@ export default function RoomPage() {
     } catch {}
   }
 
-  // ─── Document Picture-in-Picture mini-player ───
-  // Opens a floating always-on-top popup with track info + controls.
-  // Works even when the main browser window is minimised.
-  async function openMiniPlayer() {
-    // Close existing pip window if open
-    if (pipWindowRef.current && !pipWindowRef.current.closed) {
-      pipWindowRef.current.close()
-      return
-    }
-    if (!('documentPictureInPicture' in window)) {
-      toast.error('Mini-player not supported in this browser (Chrome 116+ required)')
-      return
-    }
-    try {
-      const pipWin = await window.documentPictureInPicture.requestWindow({ width: 340, height: 180, preferInitialWindowPlacement: true })
-      pipWindowRef.current = pipWin
+  // ─── Mobile Video Picture-in-Picture ─────────────────────────────────────
+  // (browser document PiP removed — using custom MiniPlayerOverlay instead)
 
       // ── Inject styles ──
       const style = pipWin.document.createElement('style')
@@ -1677,17 +1663,6 @@ export default function RoomPage() {
         pipWindowRef.current = null
       })
 
-      toast.success('Mini player opened — you can minimise this tab now')
-    } catch (err) {
-      toast.error('Could not open mini player')
-    }
-  }
-
-  // ─── Mobile Video Picture-in-Picture ─────────────────────────────────────
-  // Works on mobile Chrome (Android 8+). We draw track info onto a canvas,
-  // pipe it into a hidden <video> element, then call requestPictureInPicture()
-  // on that video. Chrome pops it out as a floating overlay — exactly like
-  // YouTube Premium — and keeps the tab alive even after you switch apps.
   async function openMobilePip() {
     if (!('pictureInPictureEnabled' in document) || !document.pictureInPictureEnabled) {
       toast.error('Picture-in-Picture not supported in this browser')
@@ -2502,16 +2477,8 @@ export default function RoomPage() {
     }
   }
 
-  const [miniPlayerOpen, setMiniPlayerOpen] = useState(false)
+  const [showLyrics, setShowLyrics] = useState(true)
   const miniPlayerCanvasRef = useRef(null)
-
-  // Render PiP canvas content into the overlay
-  function renderMiniPlayerContent(w, h) {
-    // Reuse the PiP canvas drawing logic
-    // We'll create a canvas and run the same drawFrame logic as PiP
-    // (for brevity, you can refactor drawFrame into a shared util if needed)
-    return <canvas ref={miniPlayerCanvasRef} width={w} height={h} style={{ width: w, height: h, display: 'block' }} />
-  }
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
@@ -2853,6 +2820,7 @@ export default function RoomPage() {
   //  DESKTOP LAYOUT
   // ══════════════════════════════════════════
   return (
+    <>
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       <div className="grid-bg" />
 
@@ -3059,5 +3027,18 @@ export default function RoomPage() {
         </div>
       </div>
     </div>
+    <MiniPlayerOverlay
+      renderContent={(w, h) => (
+        <>
+          <canvas ref={miniPlayerCanvasRef} width={w} height={h} style={{ width: w, height: h, display: 'block' }} />
+          <button onClick={() => setShowLyrics(v => !v)} style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, background: '#222', color: '#fff', border: 'none', borderRadius: 16, padding: '4px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            {showLyrics ? 'Hide Lyrics' : 'Show Lyrics'}
+          </button>
+        </>
+      )}
+      defaultW={showLyrics ? 400 : 88}
+      defaultH={88}
+    />
+    </>
   )
 }
