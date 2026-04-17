@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Generate WE🕊️ Logo</title></head>
+<body style="margin:0;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:24px;font-family:sans-serif;color:#fff">
+
+  <canvas id="c" width="120" height="120" style="border-radius:24px"></canvas>
+
+  <button onclick="download()" style="background:#00ff88;color:#000;border:none;padding:14px 32px;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer">
+    ⬇ Download logo.png
+  </button>
+
+  <div style="font-size:0.8rem;color:#666;max-width:320px;text-align:center">
+    This creates a 120×120px PNG — upload it to Google OAuth consent screen as your app logo.
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c')
+    const ctx = canvas.getContext('2d')
+
+    // Background gradient
+    const bg = ctx.createLinearGradient(0, 0, 120, 120)
+    bg.addColorStop(0, '#0a0a0a')
+    bg.addColorStop(1, '#111')
+    ctx.fillStyle = bg
+    ctx.beginPath()
+    ctx.roundRect(0, 0, 120, 120, 24)
+    ctx.fill()
+
+    // Green glow circle behind dove
+    const glow = ctx.createRadialGradient(60, 52, 0, 60, 52, 48)
+    glow.addColorStop(0, 'rgba(0,255,136,0.18)')
+    glow.addColorStop(1, 'rgba(0,255,136,0)')
+    ctx.fillStyle = glow
+    ctx.fillRect(0, 0, 120, 120)
+
+    // Green ring
+    ctx.beginPath()
+    ctx.arc(60, 52, 34, 0, Math.PI * 2)
+    ctx.strokeStyle = 'rgba(0,255,136,0.35)'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+
+    // Dove emoji
+    ctx.font = '44px serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('🕊️', 60, 50)
+
+    // "WE" text below
+    ctx.font = 'bold 22px Arial Black, sans-serif'
+    ctx.fillStyle = '#00ff88'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    ctx.shadowColor = 'rgba(0,255,136,0.6)'
+    ctx.shadowBlur = 10
+    ctx.fillText('WE', 60, 104)
+    ctx.shadowBlur = 0
+
+    function download() {
+      const a = document.createElement('a')
+      a.download = 'we-vibe-logo.png'
+      a.href = canvas.toDataURL('image/png')
+      a.click()
+    }
+  </script>
+</body>
+</html>

@@ -980,6 +980,11 @@ export default function RoomPage() {
   const keepAliveAudioRef = useRef(null)    // <audio> element driven by the keepalive stream
   const bgWatchdogRef = useRef(null)        // interval that fights YouTube auto-pause while tab is hidden
   const lastSkipAtRef = useRef(0)           // timestamp of last skipToNext call — prevents double-skip when watchdog + handleStateChange both fire
+  const pipLyricsRef = useRef(true)         // whether to show lyrics in PiP canvas
+  const [pipLyricsOn, setPipLyricsOn] = useState(true) // mirrors pipLyricsRef for UI
+  const canvasPipRef = useRef(null)         // hidden canvas fed into video PiP
+  const videoPipRef = useRef(null)          // hidden <video> — requestPictureInPicture target
+  const canvasPipIntervalRef = useRef(null) // holds { cancel() } to stop rAF + watchdog
   const lyricsRef = useRef(null)            // always-fresh lyrics snapshot for canvas drawFrame
   // Watch URL room sync
   const watchIframeRef = useRef(null)       // ref to watch URL <iframe> (non-YT only)
@@ -1555,6 +1560,281 @@ export default function RoomPage() {
     } catch {}
   }
 
+  // ─── Video Picture-in-Picture mini player ───────────────────────────────
+  // Draws track info onto a canvas → pipes into a hidden <video> →
+  // requestPictureInPicture() → floats over ALL apps (Android Chrome, desktop Chrome).
+  // Sizes: 72×72 (no lyrics) · 300×72 (with lyrics)
+  async function openMobilePip() {
+    if (!('pictureInPictureEnabled' in document) || !document.pictureInPictureEnabled) {
+      toast.error('Picture-in-Picture not supported in this browser')
+      return
+    }
+    // Toggle off if already in PiP
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture().catch(() => {})
+      canvasPipIntervalRef.current?.cancel?.()
+      return
+    }
+    initAudioKeepAlive()
+    try {
+      // ── Canvas setup ──
+      if (canvasPipRef.current) { try { canvasPipRef.current.remove?.() } catch {} }
+      const canvas = document.createElement('canvas')
+      canvasPipRef.current = canvas
+      const withLyrics = pipLyricsRef.current
+      const W = withLyrics ? 300 : 72, H = 72
+      canvas.width = W; canvas.height = H
+      const ctx = canvas.getContext('2d')
+
+      // ── Animation state ──
+      const anim = { frame: 0, thumbImg: null, lastTrackId: null, skipFired: false, accent: [249, 115, 22] }
+
+      function loadThumb(url) {
+        const img = new window.Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => {
+          anim.thumbImg = img
+          try {
+            const sc = document.createElement('canvas'); sc.width = 16; sc.height = 16
+            const sx = sc.getContext('2d'); sx.drawImage(img, 0, 0, 16, 16)
+            const d = sx.getImageData(0, 0, 16, 16).data
+            let r = 0, g = 0, b = 0, cnt = 0
+            for (let j = 0; j < d.length; j += 4) {
+              const br = (d[j] + d[j+1] + d[j+2]) / 3
+              if (br < 20 || br > 235) continue
+              r += d[j]; g += d[j+1]; b += d[j+2]; cnt++
+            }
+            if (cnt > 0) {
+              r = Math.round(r/cnt); g = Math.round(g/cnt); b = Math.round(b/cnt)
+              const avg = (r+g+b)/3, boost = 1.8
+              r = Math.min(255, Math.max(0, Math.round(avg + (r-avg)*boost)))
+              g = Math.min(255, Math.max(0, Math.round(avg + (g-avg)*boost)))
+              b = Math.min(255, Math.max(0, Math.round(avg + (b-avg)*boost)))
+              anim.accent = [r, g, b]
+            }
+          } catch { anim.accent = [249, 115, 22] }
+        }
+        img.onerror = () => { anim.thumbImg = null }
+        img.src = url
+      }
+
+      function fmt(s) { if (!s || !isFinite(s)) return '0:00'; return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}` }
+
+      function drawFrame() {
+        anim.frame++
+        const liveRoom = roomRef.current
+        const track = liveRoom?.currentTrack
+        const playing = liveRoom?.isPlaying
+
+        if (track?.videoId !== anim.lastTrackId) {
+          anim.lastTrackId = track?.videoId || null
+          anim.thumbImg = null; anim.skipFired = false
+          if (track?.thumbnail) loadThumb(track.thumbnail)
+          try {
+            if ('mediaSession' in navigator && track) {
+              navigator.mediaSession.metadata = new MediaMetadata({
+                title: track.title || 'We Vibe',
+                artist: (track.channelTitle || '').replace(/\s*-\s*Topic$/i, '').trim(),
+                artwork: track.thumbnail ? [{ src: track.thumbnail }] : [],
+              })
+            }
+          } catch {}
+        }
+        try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused' } catch {}
+
+        let ct = 0, dur = 0
+        try { const p = ytPlayerRef.current; ct = p?.getCurrentTime?.() ?? 0; dur = p?.getDuration?.() ?? 0 } catch {}
+        const pct = dur > 0 ? Math.min(1, ct / dur) : 0
+
+        const [ar, ag, ab] = anim.accent
+        const accentRGB = `rgb(${ar},${ag},${ab})`
+
+        // ── Background: blurred album art ──
+        if (anim.thumbImg) {
+          ctx.filter = 'blur(14px) brightness(0.28) saturate(2)'
+          ctx.drawImage(anim.thumbImg, -10, -10, W+20, H+20)
+          ctx.filter = 'none'
+        } else {
+          ctx.fillStyle = '#0a0a12'; ctx.fillRect(0, 0, W, H)
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fillRect(0, 0, W, H)
+
+        const trunc = (s, maxW) => {
+          if (ctx.measureText(s).width <= maxW) return s
+          let t = s; while (t.length > 1 && ctx.measureText(t+'…').width > maxW) t = t.slice(0,-1); return t+'…'
+        }
+        const drawThumb = (x, y, sz) => {
+          ctx.save(); ctx.beginPath()
+          if (ctx.roundRect) ctx.roundRect(x, y, sz, sz, 5); else ctx.rect(x, y, sz, sz)
+          ctx.clip()
+          if (anim.thumbImg) {
+            const iw = anim.thumbImg.naturalWidth || anim.thumbImg.width
+            const ih = anim.thumbImg.naturalHeight || anim.thumbImg.height
+            let sx = 0, sy = 0, sw = iw, sh = ih
+            if (iw/ih > 1) { sw = ih; sx = (iw-sw)/2 } else { sh = iw; sy = (ih-sh)/2 }
+            ctx.drawImage(anim.thumbImg, sx, sy, sw, sh, x, y, sz, sz)
+          } else {
+            ctx.fillStyle = '#1a1a2e'; ctx.fillRect(x, y, sz, sz)
+            ctx.fillStyle = accentRGB; ctx.font = `${Math.round(sz*0.38)}px system-ui`
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('♫', x+sz/2, y+sz/2)
+          }
+          ctx.restore()
+          ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.45)`; ctx.lineWidth = 1
+          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, sz, sz, 5); ctx.stroke() }
+        }
+
+        if (!withLyrics) {
+          // ── 72×72: album art + tiny title + pulse dot ──
+          const sz = 58, ax = (W-sz)/2, ay = 4
+          drawThumb(ax, ay, sz)
+          const g = ctx.createLinearGradient(0, 42, 0, H)
+          g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.88)')
+          ctx.fillStyle = g; ctx.fillRect(0, 42, W, H-42)
+          ctx.font = 'bold 7px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'
+          ctx.fillText(trunc(track?.title||'♫', W-6), W/2, 68)
+          // progress sliver at very bottom
+          ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(0, H-2, W, 2)
+          ctx.fillStyle = accentRGB; ctx.fillRect(0, H-2, W*pct, 2)
+          // pulse dot
+          if (playing) {
+            const p2 = 0.5 + 0.5*Math.sin(anim.frame*0.15)
+            ctx.shadowColor = accentRGB; ctx.shadowBlur = 4
+            ctx.beginPath(); ctx.arc(W-6, 6, 2.5, 0, Math.PI*2)
+            ctx.fillStyle = `rgba(${ar},${ag},${ab},${p2.toFixed(2)})`; ctx.fill()
+            ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
+          }
+        } else {
+          // ── 300×72: 64×64 album art left + info right ──
+          const sz = 64, sqX = 4, sqY = 4
+          drawThumb(sqX, sqY, sz)
+          const txX = sqX + sz + 7, txW = W - txX - 5
+          const title = track?.title || 'Nothing playing'
+          const artist = (track?.channelTitle||'').replace(/\s*-\s*Topic$/i,'').trim()
+          ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'
+          ctx.font = 'bold 10px system-ui'; ctx.fillStyle = '#fff'
+          ctx.fillText(trunc(title, txW), txX, 16)
+          ctx.font = '8px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.5)'
+          ctx.fillText(trunc(artist, txW), txX, 27)
+          // Lyrics line
+          const lyrSnap = lyricsRef.current
+          const hasSync = lyrSnap?.synced && lyrSnap?.lines?.length > 0
+          const plainText = !hasSync && lyrSnap?.plain ? lyrSnap.plain : null
+          if (hasSync) {
+            const lines = lyrSnap.lines
+            const ai = lines.reduce((best,l,i) => l.time <= ct ? i : best, 0)
+            ctx.font = 'bold 10px system-ui'; ctx.fillStyle = accentRGB
+            ctx.fillText(trunc(lines[ai].text, txW), txX, 42)
+            if (lines[ai+1]) { ctx.font = '8px system-ui'; ctx.fillStyle = `rgba(${ar},${ag},${ab},0.6)`; ctx.fillText(trunc(lines[ai+1].text, txW), txX, 54) }
+          } else if (plainText?.trim().length > 4) {
+            const pl = plainText.split('\n').map(l=>l.trim()).filter(l=>l)
+            const pi = dur > 5 ? Math.min(pl.length-1, Math.floor((ct/dur)*pl.length)) : 0
+            ctx.font = 'bold 10px system-ui'; ctx.fillStyle = accentRGB
+            ctx.fillText(trunc(pl[pi]||'', txW), txX, 42)
+            if (pl[pi+1]) { ctx.font = '8px system-ui'; ctx.fillStyle = `rgba(${ar},${ag},${ab},0.6)`; ctx.fillText(trunc(pl[pi+1], txW), txX, 54) }
+          } else {
+            ctx.font = '8px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.25)'
+            ctx.fillText('No lyrics', txX, 42)
+          }
+          // time + progress bar
+          ctx.font = '7px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.3)'
+          ctx.fillText(fmt(ct), txX, 66); ctx.textAlign = 'right'; ctx.fillText(fmt(dur), W-4, 66); ctx.textAlign = 'left'
+          ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(0, H-2, W, 2)
+          ctx.fillStyle = accentRGB; ctx.fillRect(0, H-2, W*pct, 2)
+          // pulse dot
+          if (playing) {
+            const p2 = 0.5 + 0.5*Math.sin(anim.frame*0.15)
+            ctx.shadowColor = accentRGB; ctx.shadowBlur = 4
+            ctx.beginPath(); ctx.arc(W-6, 6, 2.5, 0, Math.PI*2)
+            ctx.fillStyle = `rgba(${ar},${ag},${ab},${p2.toFixed(2)})`; ctx.fill()
+            ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
+          }
+        }
+      }
+
+      // ── rAF loop ──
+      let rafId = null
+      function loop() { try { drawFrame() } catch(e) { console.warn('[PiP]',e) }; rafId = requestAnimationFrame(loop) }
+      rafId = requestAnimationFrame(loop)
+
+      // ── Watchdog: runs even when tab is hidden ──
+      const watchdogInterval = setInterval(() => {
+        const liveId = roomRef.current?.currentTrack?.videoId || null
+        if (liveId !== anim.lastTrackId) {
+          anim.lastTrackId = liveId; anim.skipFired = false
+          if (roomRef.current?.currentTrack?.thumbnail) loadThumb(roomRef.current.currentTrack.thumbnail)
+          try {
+            const t = roomRef.current?.currentTrack
+            if ('mediaSession' in navigator && t) {
+              navigator.mediaSession.metadata = new MediaMetadata({ title: t.title||'We Vibe', artist: (t.channelTitle||'').replace(/\s*-\s*Topic$/i,'').trim(), artwork: t.thumbnail?[{src:t.thumbnail}]:[] })
+              navigator.mediaSession.playbackState = 'playing'
+            }
+          } catch {}
+          return
+        }
+        if (!anim.skipFired) {
+          try {
+            const ytS = window.YT?.PlayerState
+            const st = ytPlayerRef.current?.getPlayerState?.()
+            if (ytS && st === ytS.ENDED) {
+              anim.skipFired = true
+              if (Date.now() - lastSkipAtRef.current < 4000) return
+              lastSkipAtRef.current = Date.now()
+              if (roomRef.current?.hostId === user?.uid) skipToNext(roomId).catch(()=>{})
+              else import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{skipRequested:Date.now()}).catch(()=>{})))
+            }
+          } catch {}
+        }
+      }, 1000)
+
+      // ── Wire canvas → video ──
+      if (!videoPipRef.current) {
+        const v = document.createElement('video')
+        v.muted = true; v.loop = true; v.playsInline = true
+        v.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:0;left:0;'
+        document.body.appendChild(v)
+        videoPipRef.current = v
+      }
+      const video = videoPipRef.current
+      const stream = canvas.captureStream(30)
+      video.srcObject = stream; video.width = W; video.height = H
+      video.style.width = `${W}px`; video.style.height = `${H}px`
+      await video.play()
+      await video.requestPictureInPicture()
+
+      // ── Media Session controls ──
+      if ('mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.setActionHandler('play', () => {
+            if (roomRef.current) roomRef.current = {...roomRef.current, isPlaying: true}
+            navigator.mediaSession.playbackState = 'playing'
+            const tryPlay = () => { try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.setVolume?.(100); ytPlayerRef.current?.playVideo?.() } catch {} }
+            tryPlay(); [300,700,1400].forEach(d => setTimeout(tryPlay, d))
+            import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{isPlaying:true}).catch(()=>{})))
+          })
+          navigator.mediaSession.setActionHandler('pause', () => {
+            if (roomRef.current) roomRef.current = {...roomRef.current, isPlaying: false}
+            navigator.mediaSession.playbackState = 'paused'
+            try { ytPlayerRef.current?.pauseVideo?.() } catch {}
+            import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{isPlaying:false}).catch(()=>{})))
+          })
+          navigator.mediaSession.setActionHandler('nexttrack', () => { try { if (roomRef.current?.hostId===user?.uid) skipToNext(roomId).catch(()=>{}) } catch {} })
+        } catch {}
+      }
+
+      clearInterval(canvasPipIntervalRef.current)
+      canvasPipIntervalRef.current = {
+        cancel: () => {
+          if (rafId) cancelAnimationFrame(rafId)
+          clearInterval(watchdogInterval)
+          try { if ('mediaSession' in navigator) { navigator.mediaSession.setActionHandler('play',null); navigator.mediaSession.setActionHandler('pause',null); navigator.mediaSession.setActionHandler('nexttrack',null) } } catch {}
+        }
+      }
+
+      video.addEventListener('leavepictureinpicture', () => { canvasPipIntervalRef.current?.cancel?.() }, { once: true })
+      toast.success('PiP opened — floats over other apps')
+    } catch { toast.error('Could not open Picture-in-Picture') }
+  }
+
   function loadAndPlay(videoId, startSeconds = 0) {
     // If tab is hidden, update mediaSession immediately so Chrome knows
     // audio is active — rAF (drawFrame) is suspended and won't do it.
@@ -2030,12 +2310,16 @@ export default function RoomPage() {
               <button onClick={() => skipToNext(roomId)} style={{ width: compact ? 36 : 40, height: compact ? 36 : 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⏭</button>
               {volumeWidget}
               {compact && <button onClick={() => setMobileTab('lyrics')} title="Lyrics" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid rgba(249,115,22,0.4)', cursor: 'pointer', fontSize: '0.85rem', color: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>📝</button>}
+              {compact && <button onClick={() => { const v = !pipLyricsRef.current; pipLyricsRef.current = v; setPipLyricsOn(v) }} title={pipLyricsOn ? 'PiP: lyrics on' : 'PiP: no lyrics'} style={{ width: 32, height: 32, borderRadius: '50%', background: pipLyricsOn ? 'rgba(249,115,22,0.15)' : 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.75rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎤</button>}
+              {compact && <button onClick={openMobilePip} title="Open in PiP" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⛶</button>}
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
               <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</div>
               {volumeWidget}
               {compact && <button onClick={() => setMobileTab('lyrics')} title="Lyrics" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--glass)', border: '1px solid rgba(249,115,22,0.4)', cursor: 'pointer', fontSize: '0.85rem', color: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>📝</button>}
+              {compact && <button onClick={() => { const v = !pipLyricsRef.current; pipLyricsRef.current = v; setPipLyricsOn(v) }} title={pipLyricsOn ? 'PiP: lyrics on' : 'PiP: no lyrics'} style={{ width: 32, height: 32, borderRadius: '50%', background: pipLyricsOn ? 'rgba(249,115,22,0.15)' : 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.75rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎤</button>}
+              {compact && <button onClick={openMobilePip} title="Open in PiP" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⛶</button>}
             </div>
           )}
         </div>
@@ -2306,11 +2590,15 @@ export default function RoomPage() {
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
                       >⏭</button>
                       {volumeWidget}
+                      <button onClick={() => { const v = !pipLyricsRef.current; pipLyricsRef.current = v; setPipLyricsOn(v) }} title={pipLyricsOn ? 'PiP: lyrics on' : 'PiP: no lyrics'} style={{ width: 32, height: 32, borderRadius: '50%', background: pipLyricsOn ? 'rgba(249,115,22,0.15)' : 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.75rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎤</button>
+                      <button onClick={openMobilePip} title="Open in PiP" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⛶</button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                       <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic' }}>{room.isPlaying ? '▶ Playing • Synced with host' : '⏸ Paused by host'}</span>
                       {volumeWidget}
+                      <button onClick={() => { const v = !pipLyricsRef.current; pipLyricsRef.current = v; setPipLyricsOn(v) }} title={pipLyricsOn ? 'PiP: lyrics on' : 'PiP: no lyrics'} style={{ width: 32, height: 32, borderRadius: '50%', background: pipLyricsOn ? 'rgba(249,115,22,0.15)' : 'var(--glass)', border: `1px solid ${pipLyricsOn ? 'rgba(249,115,22,0.6)' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.75rem', color: pipLyricsOn ? '#f97316' : 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎤</button>
+                      <button onClick={openMobilePip} title="Open in PiP" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⛶</button>
                     </div>
                   )}
                   {/* Lyrics — fills remaining height */}
