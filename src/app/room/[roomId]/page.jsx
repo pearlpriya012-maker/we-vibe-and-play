@@ -1534,15 +1534,17 @@ export default function RoomPage() {
       // Must be called from a user-gesture context the first time.
       const ac = new (window.AudioContext || window.webkitAudioContext)()
       keepAliveCtxRef.current = ac
+      // 1 Hz oscillator — completely subsonic, imperceptible, but keeps the
+      // AudioContext alive so Chrome treats this tab as playing audio.
       const oscillator = ac.createOscillator()
       const gain = ac.createGain()
-      gain.gain.value = 0.005  // ~0.5% volume — audible to Chrome, inaudible to humans
-      oscillator.frequency.value = 440
+      gain.gain.value = 0  // truly silent — context presence alone satisfies Chrome
+      oscillator.frequency.value = 1
       oscillator.connect(gain)
       gain.connect(ac.destination)
       oscillator.start()
-      // Also keep an HTML Audio as backup (some browsers prefer one over the other)
-      const sr = 8000, n = 800
+      // HTML Audio backup: 1-second WAV of pure digital silence (all 0x80 = 128 = midpoint, no signal)
+      const sr = 8000, n = sr  // 1 second of silence
       const buf = new ArrayBuffer(44 + n)
       const dv = new DataView(buf)
       const ws = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)))
@@ -1551,10 +1553,10 @@ export default function RoomPage() {
       dv.setUint16(22, 1, true); dv.setUint32(24, sr, true)
       dv.setUint32(28, sr, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true)
       ws(36, 'data'); dv.setUint32(40, n, true)
-      new Uint8Array(buf, 44).fill(0x80)
+      new Uint8Array(buf, 44).fill(0x80)  // 0x80 = silence for 8-bit PCM
       const audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })))
       audio.loop = true
-      audio.volume = 0.01  // 1% — above Chrome's active-audio threshold
+      audio.volume = 0  // completely silent
       audio.play().catch(() => {})
       keepAliveAudioRef.current = audio
     } catch {}
