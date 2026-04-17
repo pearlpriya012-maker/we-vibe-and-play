@@ -1564,16 +1564,15 @@ export default function RoomPage() {
     }
   }
 
-  const [miniPlayerOpen, setMiniPlayerOpen] = useState(false)
+  const [showLyrics, setShowLyrics] = useState(true)
   const miniPlayerCanvasRef = useRef(null)
 
-  // Render PiP canvas content into the overlay
-  function renderMiniPlayerContent(w, h) {
-    // Reuse the PiP canvas drawing logic
-    // We'll create a canvas and run the same drawFrame logic as PiP
-    // (for brevity, you can refactor drawFrame into a shared util if needed)
-    return <canvas ref={miniPlayerCanvasRef} width={w} height={h} style={{ width: w, height: h, display: 'block' }} />
-  }
+  // Render your animated canvas (with/without lyrics) into the overlay
+  useEffect(() => {
+    // Place your canvas drawing logic here, targeting miniPlayerCanvasRef.current
+    // Use showLyrics to control lyrics rendering
+    // ...
+  }, [showLyrics /*, ...other dependencies */])
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
