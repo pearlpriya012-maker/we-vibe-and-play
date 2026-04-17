@@ -1327,7 +1327,7 @@ export default function RoomPage() {
       updatePlayback(roomId, { isPlaying: false, currentTime: ytPlayerRef.current?.getCurrentTime?.() || 0 })
     })
     navigator.mediaSession.setActionHandler('nexttrack', isHost ? () => skipToNext(roomId) : null)
-    navigator.mediaSession.setActionHandler('previoustrack', null)
+    navigator.mediaSession.setActionHandler('previoustrack', canControl ? () => handlePreviousTrack() : null)
     navigator.mediaSession.setActionHandler('seekto', seek)
     return () => {
       ;['play','pause','nexttrack','previoustrack','seekto'].forEach(a => {
@@ -1534,16 +1534,18 @@ export default function RoomPage() {
       // Must be called from a user-gesture context the first time.
       const ac = new (window.AudioContext || window.webkitAudioContext)()
       keepAliveCtxRef.current = ac
-      // 1 Hz oscillator — completely subsonic, imperceptible, but keeps the
-      // AudioContext alive so Chrome treats this tab as playing audio.
+      // 1 Hz oscillator — completely subsonic, physically imperceptible.
+      // gain MUST be > 0 so Chrome detects actual audio output and keeps
+      // the tab in "active audio" state even when the screen is off.
       const oscillator = ac.createOscillator()
       const gain = ac.createGain()
-      gain.gain.value = 0  // truly silent — context presence alone satisfies Chrome
+      gain.gain.value = 0.001  // -60 dB — inaudible on any speaker/headphone but non-zero
       oscillator.frequency.value = 1
       oscillator.connect(gain)
       gain.connect(ac.destination)
       oscillator.start()
-      // HTML Audio backup: 1-second WAV of pure digital silence (all 0x80 = 128 = midpoint, no signal)
+      // HTML Audio backup: pure silence WAV, volume just above 0 so Chrome
+      // doesn't classify this as "muted" and revoke audio focus on screen-off.
       const sr = 8000, n = sr  // 1 second of silence
       const buf = new ArrayBuffer(44 + n)
       const dv = new DataView(buf)
@@ -1556,7 +1558,7 @@ export default function RoomPage() {
       new Uint8Array(buf, 44).fill(0x80)  // 0x80 = silence for 8-bit PCM
       const audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })))
       audio.loop = true
-      audio.volume = 0  // completely silent
+      audio.volume = 0.001  // inaudible but non-zero — Chrome counts it as active audio
       audio.play().catch(() => {})
       keepAliveAudioRef.current = audio
     } catch {}
