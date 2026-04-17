@@ -2035,6 +2035,11 @@ export default function RoomPage() {
       const video = videoPipRef.current
       const stream = canvas.captureStream(30)
       video.srcObject = stream
+      video.width = W
+      video.height = H
+      video.style.width = `${W}px`
+      video.style.height = `${H}px`
+      video.playsInline = true
       await video.play()
 
       // ── Enter PiP ──
