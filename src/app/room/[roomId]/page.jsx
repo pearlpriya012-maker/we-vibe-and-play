@@ -1535,35 +1535,18 @@ export default function RoomPage() {
       // Must be called from a user-gesture context the first time.
       const ac = new (window.AudioContext || window.webkitAudioContext)()
       keepAliveCtxRef.current = ac
-      // 18 Hz oscillator — below the ~20 Hz human hearing threshold, physically inaudible.
-      // gain at 0.02 so Chrome's audio pipeline detects real output and holds
-      // the tab in "active audio" state even when the screen turns off.
-      const oscillator = ac.createOscillator()
-      const gain = ac.createGain()
-      gain.gain.value = 0.02   // inaudible at 18 Hz, sufficient for Chrome to detect audio
-      oscillator.frequency.value = 18
-      oscillator.connect(gain)
-      gain.connect(ac.destination)
-      oscillator.start()
-      // HTML Audio backup: 18 Hz sine wave WAV so Chrome sees non-silent audio
-      // and does NOT revoke audio focus when the screen turns off.
-      const sr = 8000, n = sr  // 1 second loop
-      const buf = new ArrayBuffer(44 + n)
-      const dv = new DataView(buf)
-      const ws = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)))
-      ws(0, 'RIFF'); dv.setUint32(4, 36 + n, true); ws(8, 'WAVE')
-      ws(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true)
-      dv.setUint16(22, 1, true); dv.setUint32(24, sr, true)
-      dv.setUint32(28, sr, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true)
-      ws(36, 'data'); dv.setUint32(40, n, true)
-      // 18 Hz sine, amplitude 3 (out of 127) — below human hearing, NOT silence
-      const samples = new Uint8Array(buf, 44)
-      for (let i = 0; i < n; i++) samples[i] = 128 + Math.round(3 * Math.sin(2 * Math.PI * 18 * i / sr))
-      const audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })))
-      audio.loop = true
-      audio.volume = 0.05  // 5% volume — still inaudible at 18 Hz, Chrome counts as active
-      audio.play().catch(() => {})
-      keepAliveAudioRef.current = audio
+      // ConstantSourceNode — outputs a DC offset (0 Hz, no oscillation).
+      // Zero frequency = zero speaker movement = zero audible sound.
+      // Chrome's audio pipeline still sees the AudioContext producing output
+      // and keeps the tab in "active audio" state even when the screen is off.
+      const src = ac.createConstantSource ? ac.createConstantSource() : null
+      if (src) {
+        src.offset.value = 0.001  // tiny DC offset — Chrome detects it, ears cannot
+        src.connect(ac.destination)
+        src.start()
+      }
+      // No HTML Audio needed — the running AudioContext above is sufficient
+      // to hold Chrome's audio focus when the screen turns off.
     } catch {}
   }
 
