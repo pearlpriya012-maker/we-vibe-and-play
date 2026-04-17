@@ -2380,6 +2380,8 @@ export default function RoomPage() {
   }
 
   const [showLyrics, setShowLyrics] = useState(true)
+  // keep canvas PiP in sync with the overlay toggle
+  useEffect(() => { pipLyricsRef.current = showLyrics }, [showLyrics])
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
@@ -2954,6 +2956,7 @@ export default function RoomPage() {
                 {canControl && <button onClick={() => handlePlayPause()} style={{ background: '#00ff88', border: 'none', borderRadius: '50%', width: 34, height: 34, color: '#000', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{isPlaying ? '⏸' : '▶'}</button>}
                 {canControl && <button onClick={() => skipToNext(roomId)} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 16, cursor: 'pointer', padding: '4px 2px' }}>⏭</button>}
                 <button onClick={() => setShowLyrics(v => !v)} title={showLyrics ? 'Hide lyrics' : 'Show lyrics'} style={{ background: 'none', border: 'none', color: showLyrics ? '#00ff88' : '#555', fontSize: 16, cursor: 'pointer', padding: '4px 2px' }}>🎤</button>
+                <button onClick={openMobilePip} title="Pop out — stays visible over other apps" style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 14, cursor: 'pointer', padding: '4px 2px' }}>⤴</button>
               </div>
             </div>
             {/* Progress bar */}
