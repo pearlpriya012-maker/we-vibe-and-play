@@ -1195,7 +1195,10 @@ export default function RoomPage() {
       try {
         const state = p.getPlayerState?.()
         if (state !== 1) {
-          if (liveRoom.currentTime) p.seekTo?.(liveRoom.currentTime, true)
+          if (liveRoom.currentTime) {
+            const elapsed = (Date.now() - (liveRoom.currentTimeAt || Date.now())) / 1000
+            p.seekTo?.(Math.max(0, liveRoom.currentTime + elapsed), true)
+          }
           p.unMute?.()
           p.setVolume?.(volume)
           p.playVideo?.()
@@ -1411,7 +1414,8 @@ export default function RoomPage() {
         // Track changed — always sync, never blocked by the 1-second guard.
         // The guard was causing canControl participants to miss new tracks when
         // ENDED set lastUpdateRef just before the new track arrived in Firestore.
-        loadAndPlay(room.currentTrack.videoId, room.currentTime || 0)
+        const elapsed = (Date.now() - (room.currentTimeAt || Date.now())) / 1000
+        loadAndPlay(room.currentTrack.videoId, Math.max(0, (room.currentTime || 0) + elapsed))
         return
       }
       // Play/pause state change — only apply if we didn't trigger it ourselves
@@ -1423,7 +1427,7 @@ export default function RoomPage() {
     } catch {}
   }, [room?.isPlaying, room?.currentTrack?.videoId, isHost])
 
-  // ─── Non-host: seek correction when drifting >2s from host ───
+  // ─── Non-host: seek correction when drifting >1s from host (latency-compensated) ───
   useEffect(() => {
     if (!room || isHost || !room.currentTrack?.videoId) return
     try {
@@ -1434,14 +1438,39 @@ export default function RoomPage() {
       if (state !== 1 && state !== 3) return
       const guestTime = p.getCurrentTime?.()
       if (typeof guestTime !== 'number') return
-      const drift = Math.abs(guestTime - (room.currentTime || 0))
-      if (drift > 2.5) {
-        p.seekTo(room.currentTime, true)
+      // Add elapsed-since-write to compensate for Firestore + network latency
+      const elapsed = (Date.now() - (room.currentTimeAt || Date.now())) / 1000
+      const targetTime = Math.max(0, (room.currentTime || 0) + elapsed)
+      const drift = Math.abs(guestTime - targetTime)
+      if (drift > 1.0) {
+        p.seekTo(targetTime, true)
       }
     } catch {}
   }, [room?.currentTime])
 
-  // ─── Host: push timestamp every 2s ───
+  // ─── Non-host: continuous drift correction every 3s (catches slow drift between Firestore updates) ───
+  useEffect(() => {
+    if (!room || isHost || !room.currentTrack?.videoId || !room.isPlaying) return
+    const iv = setInterval(() => {
+      try {
+        const p = ytPlayerRef.current
+        if (!p) return
+        const state = p.getPlayerState?.()
+        if (state !== 1 && state !== 3) return
+        const guestTime = p.getCurrentTime?.()
+        if (typeof guestTime !== 'number') return
+        const r = roomRef.current
+        if (!r?.currentTime) return
+        const elapsed = (Date.now() - (r.currentTimeAt || Date.now())) / 1000
+        const targetTime = Math.max(0, r.currentTime + elapsed)
+        const drift = Math.abs(guestTime - targetTime)
+        if (drift > 1.0) p.seekTo(targetTime, true)
+      } catch {}
+    }, 3000)
+    return () => clearInterval(iv)
+  }, [isHost, room?.currentTrack?.videoId, room?.isPlaying])
+
+  // ─── Host: push timestamp every 1s (tighter heartbeat for better sync) ───
   useEffect(() => {
     if (!isHost || !room?.isPlaying) return
     const iv = setInterval(() => {
@@ -1449,7 +1478,7 @@ export default function RoomPage() {
         const t = ytPlayerRef.current?.getCurrentTime?.()
         if (typeof t === 'number' && isFinite(t)) updatePlayback(roomId, { currentTime: t })
       } catch {}
-    }, 2000)
+    }, 1000)
     return () => clearInterval(iv)
   }, [isHost, room?.isPlaying, roomId])
 

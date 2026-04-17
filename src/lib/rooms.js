@@ -134,7 +134,10 @@ export function subscribeToRoom(roomId, callback) {
 export async function updatePlayback(roomId, { isPlaying, currentTime, currentTrack }) {
   const updates = { lastActivity: serverTimestamp() }
   if (isPlaying !== undefined) updates.isPlaying = isPlaying
-  if (currentTime !== undefined) updates.currentTime = currentTime
+  if (currentTime !== undefined) {
+    updates.currentTime = currentTime
+    updates.currentTimeAt = Date.now()  // wall-clock ms — guests add elapsed time to compensate for latency
+  }
   if (currentTrack !== undefined) updates.currentTrack = currentTrack
   await updateDoc(doc(db, 'rooms', roomId), updates)
 }
