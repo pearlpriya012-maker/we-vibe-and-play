@@ -1229,21 +1229,34 @@ export default function RoomPage() {
     if (t > 0.5) e.target.seekTo(t, true)
     if (r?.watchIsPlaying) e.target.playVideo()
     else e.target.pauseVideo()
-    // Apply saved quality preference (only works if quality is available for this video)
+    // Apply saved quality preference via setPlaybackQualityRange (setPlaybackQuality deprecated)
     try {
       const q = watchQualityRef.current
-      if (q && q !== 'auto') e.target.setPlaybackQuality(q)
+      if (q && q !== 'auto') applyWatchQuality(e.target, q)
     } catch {}
   }
 
   const watchQualityRef = useRef('auto')
+
+  function applyWatchQuality(player, q) {
+    if (!player) return
+    try {
+      if (q === 'auto') {
+        // Reset to adaptive bitrate — use the lowest possible floor
+        player.setPlaybackQualityRange?.('tiny', 'highres')
+      } else {
+        // Lock both min and max to the chosen level — forces YouTube to use it
+        player.setPlaybackQualityRange?.(q, q)
+        // Also call the old API as a fallback for older player builds
+        player.setPlaybackQuality?.(q)
+      }
+    } catch {}
+  }
+
   function handleWatchQualityChange(q) {
     watchQualityRef.current = q
     setWatchQuality(q)
-    try {
-      if (q === 'auto') watchYtPlayerRef.current?.setPlaybackQuality?.('default')
-      else watchYtPlayerRef.current?.setPlaybackQuality?.(q)
-    } catch {}
+    applyWatchQuality(watchYtPlayerRef.current, q)
   }
 
   // Sync all participants to host's play/pause/seek via Firestore
