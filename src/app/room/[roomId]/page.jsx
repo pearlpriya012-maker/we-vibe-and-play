@@ -2856,6 +2856,145 @@ export default function RoomPage() {
   }
 
   // ══════════════════════════════════════════
+  //  WATCH URL ROOM — DESKTOP
+  // ══════════════════════════════════════════
+  if (room.watchUrl && !isMobile) {
+    const isYt = /youtube\.com\/embed/.test(room.watchUrl)
+    const fmtTime = s => { const m = Math.floor(s / 60); const sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, '0')}` }
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0a0a0a', position: 'relative' }}>
+        <div className="grid-bg" />
+
+        {/* Header */}
+        <header style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 18px', background: 'rgba(13,13,13,0.97)', borderBottom: '1px solid var(--border)', zIndex: 10, position: 'relative' }}>
+          <Link href="/dashboard" style={{ fontFamily: 'Oswald', fontSize: '1.15rem', fontWeight: 700, color: 'var(--cyan)', textDecoration: 'none', textShadow: '0 0 12px rgba(0,200,255,0.4)', flexShrink: 0 }}>WE🕊️</Link>
+          <div style={{ fontFamily: 'Oswald', fontSize: '0.68rem', color: 'var(--cyan)', letterSpacing: '0.1em', flexShrink: 0 }}>📺 WATCH ROOM</div>
+          {/* URL bar (host) */}
+          {isHost && (
+            <form onSubmit={e => {
+              e.preventDefault()
+              const s = watchUrlInput.trim()
+              if (!s) return
+              const ytMatch = s.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+              const dmMatch = s.match(/dailymotion\.com\/(?:video|embed\/video)\/([A-Za-z0-9]+)/)
+              const vimeoMatch = s.match(/vimeo\.com\/(\d+)/)
+              const url = ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0&enablejsapi=1`
+                : dmMatch ? `https://www.dailymotion.com/embed/video/${dmMatch[1]}?autoplay=1`
+                : vimeoMatch ? `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`
+                : (/^https?:\/\//i.test(s) ? s : null)
+              if (!url) { toast.error('Invalid URL'); return }
+              updateWatchPlayback(roomId, { watchUrl: url, watchIsPlaying: false, watchCurrentTime: 0, watchUpdatedAt: Date.now() })
+              setWatchUrlInput('')
+            }} style={{ flex: 1, display: 'flex', gap: 6, minWidth: 0 }}>
+              <span style={{ fontSize: '0.85rem', alignSelf: 'center', flexShrink: 0 }}>🔗</span>
+              <input value={watchUrlInput} onChange={e => setWatchUrlInput(e.target.value)}
+                placeholder={room.watchUrl || 'Paste new video URL…'}
+                style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(0,200,255,0.2)', borderRadius: 8, padding: '5px 10px', color: '#fff', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', minWidth: 0 }}
+              />
+              <button type="submit" style={{ flexShrink: 0, background: 'var(--cyan)', border: 'none', borderRadius: 8, padding: '5px 12px', color: '#000', fontFamily: 'Oswald', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>GO</button>
+              {!isYt && (
+                <button type="button" onClick={() => setWatchCrop(c => !c)} style={{ flexShrink: 0, background: watchCrop ? 'rgba(0,200,255,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${watchCrop ? 'rgba(0,200,255,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, padding: '5px 10px', color: watchCrop ? 'var(--cyan)' : 'var(--text-dim)', cursor: 'pointer', fontSize: '0.78rem' }}>✂️ {watchCrop ? 'Cropped' : 'Crop'}</button>
+              )}
+            </form>
+          )}
+          {!isHost && <div style={{ flex: 1 }} />}
+          {/* Right badge cluster */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button onClick={copyCode} style={{ background: 'rgba(0,200,255,0.08)', border: '1px solid rgba(0,200,255,0.2)', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontFamily: 'Oswald', color: 'var(--cyan)', fontSize: '0.7rem' }}>{copied ? '✅' : '📋'} {room.roomCode}</button>
+            <div className="badge badge-green" style={{ fontSize: '0.7rem' }}><span className="pulse-dot" style={{ width: 6, height: 6 }} />{room.participants?.length || 0} vibing</div>
+            {isHost && <div className="badge" style={{ background: 'rgba(243,156,18,0.1)', border: '1px solid rgba(243,156,18,0.3)', color: '#f39c12', fontSize: '0.7rem' }}>⭐ HOST</div>}
+            <button onClick={handleLeave} className="btn-danger" style={{ padding: '5px 12px', fontSize: '0.78rem' }}>Leave</button>
+          </div>
+        </header>
+
+        {/* Body — video + chat sidebar */}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+
+          {/* Video area */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+            {/* Video fills remaining height */}
+            <div style={{ flex: 1, position: 'relative', background: '#000', overflow: 'hidden', minHeight: 0 }}>
+              {isYt ? (
+                <YouTube
+                  key={room.watchUrl}
+                  videoId={room.watchUrl.match(/embed\/([A-Za-z0-9_-]{11})/)?.[1]}
+                  opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, controls: 1, rel: 0 } }}
+                  onReady={handleWatchPlayerReady}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+                />
+              ) : (
+                <iframe
+                  key={room.watchUrl}
+                  src={`/api/proxy?url=${encodeURIComponent(room.watchUrl)}`}
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowFullScreen
+                  style={{ position: 'absolute', top: watchCrop ? -65 : 0, left: 0, width: '100%', height: watchCrop ? 'calc(100% + 65px)' : '100%', border: 'none', display: 'block' }}
+                  title="Watch together"
+                />
+              )}
+            </div>
+
+            {/* Sync Controls bar */}
+            {isYt && (
+              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'rgba(13,13,13,0.97)', borderTop: '1px solid rgba(0,200,255,0.15)' }}>
+                {canControl ? (
+                  <>
+                    <button onClick={() => {
+                      const nowPlaying = !room.watchIsPlaying
+                      const t = watchGetTime()
+                      if (nowPlaying) watchPlay(); else watchPause()
+                      updateWatchPlayback(roomId, { watchIsPlaying: nowPlaying, watchCurrentTime: t, watchUpdatedAt: Date.now() })
+                    }} style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--cyan)', border: 'none', cursor: 'pointer', fontSize: '1.05rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 14px rgba(0,200,255,0.4)', transition: 'transform 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >{room.watchIsPlaying ? '⏸' : '▶'}</button>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', color: 'var(--cyan)', flexShrink: 0, minWidth: 42 }}>{fmtTime(watchTime)}</span>
+                    <input type="range" min="0" max="7200" value={watchTime}
+                      onChange={e => setWatchTime(+e.target.value)}
+                      onMouseUp={e => { watchSeek(+e.target.value); updateWatchPlayback(roomId, { watchCurrentTime: +e.target.value, watchUpdatedAt: Date.now() }) }}
+                      onTouchEnd={e => { watchSeek(+e.target.value); updateWatchPlayback(roomId, { watchCurrentTime: +e.target.value, watchUpdatedAt: Date.now() }) }}
+                      style={{ flex: 1, accentColor: 'var(--cyan)', cursor: 'pointer', height: 4 }}
+                    />
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.68rem', color: 'var(--text-dim)', flexShrink: 0 }}>{isHost ? '⭐ HOST CONTROLS' : '🛡️ IN SYNC'}</span>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%' }}>
+                    <span style={{ fontSize: '1.1rem' }}>{room.watchIsPlaying ? '▶' : '⏸'}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.78rem', color: 'var(--text-dim)' }}>{room.watchIsPlaying ? 'Playing' : 'Paused by host'} · {fmtTime(watchTime)}</span>
+                    <span style={{ marginLeft: 'auto', fontFamily: 'Oswald', fontSize: '0.68rem', color: 'var(--cyan)', background: 'rgba(0,200,255,0.08)', border: '1px solid rgba(0,200,255,0.25)', borderRadius: 6, padding: '4px 10px' }}>🛡️ SYNCED WITH HOST</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right sidebar — Chat + People (320px) */}
+          <div style={{ width: 320, flexShrink: 0, borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'rgba(13,13,13,0.7)' }}>
+            {/* Tabs */}
+            <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--border)' }}>
+              {[['chat', '💬 CHAT'], ['people', '👥 PEOPLE']].map(([id, label]) => (
+                <button key={id} onClick={() => setMobileTab(id)}
+                  style={{ flex: 1, padding: '10px 4px', background: 'transparent', border: 'none', borderBottom: `2px solid ${mobileTab === id ? 'var(--cyan)' : 'transparent'}`, cursor: 'pointer', fontFamily: 'Oswald', fontSize: '0.65rem', letterSpacing: '0.1em', color: mobileTab === id ? 'var(--cyan)' : 'var(--text-dim)' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {/* Tab content */}
+            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+              <div style={{ display: mobileTab === 'people' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <ParticipantsPanel room={room} currentUser={user} isHost={isHost} roomId={roomId} watchTimes={room.watchTimes} />
+              </div>
+              <div style={{ display: mobileTab !== 'people' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <ChatPanel roomId={roomId} messages={messages} currentUser={user} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ══════════════════════════════════════════
   //  DESKTOP LAYOUT
   // ══════════════════════════════════════════
   return (
