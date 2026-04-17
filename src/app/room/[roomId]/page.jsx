@@ -1840,6 +1840,7 @@ export default function RoomPage() {
                   <button class="cb" id="b-bk" style="width:26px;height:20px" title="-10s">\u23ea</button>
                   <button class="cb" id="b-pl" style="width:32px;height:20px;background:rgba(0,255,136,0.18)" title="Play/Pause">\u25b6</button>
                   <button class="cb" id="b-fw" style="width:26px;height:20px" title="+10s">\u23e9</button>
+                  <button class="cb" id="b-sk" style="width:26px;height:20px" title="Skip song">\u23ed</button>
                   <button class="cb" id="b-ly" style="width:26px;height:20px" title="Lyrics">\uD83C\uDF99</button>
                 </div>
               </div>
@@ -1857,6 +1858,7 @@ export default function RoomPage() {
         const bBk    = d.getElementById('b-bk')
         const bPl    = d.getElementById('b-pl')
         const bFw    = d.getElementById('b-fw')
+        const bSk    = d.getElementById('b-sk')
         const bLy    = d.getElementById('b-ly')
 
         const setAccent = () => {
@@ -1873,6 +1875,10 @@ export default function RoomPage() {
           const pl = roomRef.current?.isPlaying
           try { if (pl) ytPlayerRef.current?.pauseVideo?.(); else { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.playVideo?.() } } catch {}
           import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{isPlaying:!pl}).catch(()=>{})))
+        }
+        bSk.onclick = () => {
+          if (roomRef.current?.hostId === user?.uid) skipToNext(roomId).catch(()=>{})
+          else import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{skipRequested:Date.now()}).catch(()=>{}) ))
         }
         bLy.onclick = () => {
           const v = !pipLyricsRef.current
