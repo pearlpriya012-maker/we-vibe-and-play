@@ -2595,7 +2595,7 @@ export default function RoomPage() {
     )
   }
 
-  if (isMobile) {
+  if (isMobile && !room.watchUrl) {
     const MOBILE_TABS = [
       { id: 'player', icon: musicMode ? '🎵' : '📺', label: 'Player' },
       { id: 'queue',  icon: '🎶', label: 'Queue' },
