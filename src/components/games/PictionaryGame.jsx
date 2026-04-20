@@ -23,10 +23,12 @@ const PALETTE = [
 const BRUSH_SIZES = [3, 6, 12, 24]
 
 const PICT_STYLES = `
-  @keyframes pFadeUp { from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)} }
-  @keyframes pPop    { 0%{transform:scale(.6);opacity:0}65%{transform:scale(1.12)}100%{transform:scale(1);opacity:1} }
-  @keyframes pPulse  { 0%,100%{opacity:1}50%{opacity:.55} }
-  @keyframes pTick   { 0%,100%{transform:scale(1)}50%{transform:scale(1.08)} }
+  @keyframes pFadeUp  { from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)} }
+  @keyframes pPop     { 0%{transform:scale(.6);opacity:0}65%{transform:scale(1.12)}100%{transform:scale(1);opacity:1} }
+  @keyframes pPulse   { 0%,100%{opacity:1}50%{opacity:.55} }
+  @keyframes pTick    { 0%,100%{transform:scale(1)}50%{transform:scale(1.08)} }
+  @keyframes pSplatPulse { 0%,100%{transform:scale(1);opacity:var(--op,.09)} 50%{transform:scale(1.07);opacity:calc(var(--op,.09)*1.6)} }
+  @keyframes pBlobDrift { 0%,100%{transform:translate(0,0) rotate(var(--br,0deg))} 50%{transform:translate(var(--bx,4px),var(--by,-8px)) rotate(calc(var(--br,0deg)+5deg))} }
   .p-fadein { animation: pFadeUp .25s ease both; }
   .p-pop    { animation: pPop .4s cubic-bezier(.34,1.56,.64,1) both; }
   .p-pulse  { animation: pPulse 1s ease-in-out infinite; }
@@ -661,6 +663,67 @@ function GameOverScreen({ game, currentUser, onPlayAgain, onClose }) {
   )
 }
 
+// ─── Artist Studio Background ─────────────────────────────────────────────────
+
+function PictBg() {
+  const splatters = [
+    { top:'8%',   left:'6%',   size:48, color:'rgba(239,68,68,',   op:0.10, br:'-12deg', bx:'3px',  by:'-7px',  d:'5.2s', delay:'0s'   },
+    { top:'14%',  right:'7%',  size:36, color:'rgba(59,130,246,',  op:0.09, br:'18deg',  bx:'-4px', by:'-9px',  d:'6.1s', delay:'0.8s' },
+    { top:'60%',  left:'4%',   size:60, color:'rgba(234,179,8,',   op:0.08, br:'5deg',   bx:'6px',  by:'-6px',  d:'4.8s', delay:'1.3s' },
+    { top:'72%',  right:'5%',  size:44, color:'rgba(34,197,94,',   op:0.09, br:'-20deg', bx:'-5px', by:'-10px', d:'5.5s', delay:'0.4s' },
+    { top:'38%',  left:'3%',   size:30, color:'rgba(139,92,246,',  op:0.11, br:'30deg',  bx:'4px',  by:'-5px',  d:'7.0s', delay:'2.1s' },
+    { top:'45%',  right:'4%',  size:52, color:'rgba(236,72,153,',  op:0.08, br:'-8deg',  bx:'-3px', by:'-8px',  d:'6.3s', delay:'1.6s' },
+    { top:'85%',  left:'12%',  size:38, color:'rgba(6,182,212,',   op:0.09, br:'15deg',  bx:'5px',  by:'-7px',  d:'5.8s', delay:'0.9s' },
+    { top:'25%',  left:'45%',  size:22, color:'rgba(239,68,68,',   op:0.07, br:'-25deg', bx:'2px',  by:'-4px',  d:'4.5s', delay:'3.0s' },
+  ]
+  return (
+    <div style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'hidden', zIndex:0 }}>
+      {/* Warm dark studio base */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 130% 80% at 38% 28%, #2c1409 0%, #160906 40%, #070408 100%)' }} />
+      {/* Warm amber overhead spotlight */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 70% 50% at 50% -5%, rgba(255,145,40,0.18) 0%, rgba(200,90,20,0.06) 40%, transparent 65%)' }} />
+      {/* Cool blue-violet rim from right */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 45% 80% at 105% 50%, rgba(60,60,200,0.07) 0%, transparent 55%)' }} />
+      {/* Warm floor bounce from bottom */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 80% 30% at 50% 110%, rgba(180,90,20,0.1) 0%, transparent 55%)' }} />
+      {/* Edge vignette */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse at 50% 50%, transparent 38%, rgba(0,0,0,0.78) 100%)' }} />
+      {/* Canvas linen weave */}
+      <div style={{ position:'absolute', inset:0,
+        backgroundImage:'repeating-linear-gradient(45deg, rgba(255,255,255,0.007) 0px, rgba(255,255,255,0.007) 1px, transparent 1px, transparent 6px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.005) 0px, rgba(255,255,255,0.005) 1px, transparent 1px, transparent 6px)' }} />
+      {/* Paint splatters */}
+      {splatters.map((s,i) => (
+        <div key={i} style={{
+          position:'absolute', top:s.top, left:s.left, right:s.right,
+          width:s.size, height:s.size * 0.75,
+          borderRadius:'50% 40% 55% 45% / 50% 50% 45% 55%',
+          background:`${s.color}${s.op})`,
+          filter:'blur(5px)',
+          '--op': s.op, '--br': s.br, '--bx': s.bx, '--by': s.by,
+          animation:`pBlobDrift ${s.d} ease-in-out ${s.delay} infinite, pSplatPulse ${s.d} ease-in-out ${s.delay} infinite`,
+        }} />
+      ))}
+      {/* Paint streak – horizontal brush strokes */}
+      {[
+        { top:'18%', left:'2%',  w:'18%', h:2,  rot:'-6deg',  color:'rgba(239,68,68,0.08)' },
+        { top:'55%', right:'3%', w:'14%', h:2,  rot:'12deg',  color:'rgba(59,130,246,0.07)' },
+        { top:'78%', left:'8%',  w:'20%', h:2,  rot:'-3deg',  color:'rgba(234,179,8,0.07)' },
+      ].map((streak,i) => (
+        <div key={i} style={{
+          position:'absolute', top:streak.top, left:streak.left, right:streak.right,
+          width:streak.w, height:streak.h,
+          transform:`rotate(${streak.rot})`,
+          background:streak.color,
+          filter:'blur(2px)',
+          borderRadius:2,
+        }} />
+      ))}
+      {/* Easel vertical */}
+      <div style={{ position:'absolute', bottom:0, left:'50%', transform:'translateX(-50%)', width:1, height:'35%', background:'linear-gradient(to top, rgba(150,100,50,0.15), transparent)' }} />
+    </div>
+  )
+}
+
 // ─── Main PictionaryGame ───────────────────────────────────────────────────────
 
 export default function PictionaryGame({ roomId, roomParticipants, currentUser, invite, onClose }) {
@@ -768,8 +831,9 @@ export default function PictionaryGame({ roomId, roomParticipants, currentUser, 
   // ── Render ──
 
   return (
-    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#0a0a14', position:'relative' }}>
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#070408', position:'relative' }}>
       <style>{PICT_STYLES}</style>
+      <PictBg />
 
       {/* No game → invite waiting room or lobby */}
       {!game && invite && (

@@ -14,11 +14,13 @@ import {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const WC_STYLES = `
-  @keyframes wcFadeUp { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
-  @keyframes wcPop    { 0%{opacity:0;transform:scale(.7)}60%{transform:scale(1.1)}100%{opacity:1;transform:scale(1)} }
-  @keyframes wcPulse  { 0%,100%{opacity:1}50%{opacity:.45} }
-  @keyframes wcShake  { 0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)} }
+  @keyframes wcFadeUp    { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
+  @keyframes wcPop       { 0%{opacity:0;transform:scale(.7)}60%{transform:scale(1.1)}100%{opacity:1;transform:scale(1)} }
+  @keyframes wcPulse     { 0%,100%{opacity:1}50%{opacity:.45} }
+  @keyframes wcShake     { 0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)} }
   @keyframes wcLetterPop { 0%{opacity:0;transform:scale(2)}100%{opacity:1;transform:scale(1)} }
+  @keyframes wcLetFloat  { 0%,100%{transform:translateY(0) rotate(var(--lr)) scale(1);opacity:var(--lop,.07)} 50%{transform:translateY(-14px) rotate(calc(var(--lr) + 7deg)) scale(1.03);opacity:calc(var(--lop,.07)*2.2)} }
+  @keyframes wcGlimmer   { 0%,100%{opacity:0.18;transform:scale(1)} 50%{opacity:0.55;transform:scale(1.3)} }
   .wc-fadein   { animation: wcFadeUp .22s ease both; }
   .wc-pop      { animation: wcPop .38s cubic-bezier(.34,1.56,.64,1) both; }
   .wc-pulse    { animation: wcPulse 1s ease-in-out infinite; }
@@ -502,7 +504,75 @@ function EventLog({ log }) {
     </div>
   )
 }
+// ─── Ancient Lexicon Background ──────────────────────────────────────────────────────
 
+function WcBg() {
+  const letters = [
+    { ch:'A', top:'7%',  left:'6%',  size:38, op:0.07, rot:'-18deg', d:'5.8s', delay:'0s'   },
+    { ch:'Z', top:'12%', right:'7%', size:44, op:0.06, rot:'22deg',  d:'6.5s', delay:'0.7s' },
+    { ch:'M', top:'30%', left:'2%',  size:30, op:0.08, rot:'-8deg',  d:'7.2s', delay:'1.4s' },
+    { ch:'X', top:'35%', right:'4%', size:50, op:0.05, rot:'15deg',  d:'5.3s', delay:'0.3s' },
+    { ch:'Q', top:'55%', left:'5%',  size:34, op:0.07, rot:'-25deg', d:'6.8s', delay:'2.0s' },
+    { ch:'K', top:'60%', right:'6%', size:28, op:0.08, rot:'10deg',  d:'4.9s', delay:'1.1s' },
+    { ch:'W', top:'78%', left:'3%',  size:42, op:0.06, rot:'-5deg',  d:'7.5s', delay:'0.5s' },
+    { ch:'R', top:'80%', right:'5%', size:36, op:0.07, rot:'20deg',  d:'6.0s', delay:'1.8s' },
+    { ch:'L', top:'20%', left:'44%', size:22, op:0.05, rot:'-12deg', d:'8.0s', delay:'3.0s' },
+    { ch:'S', top:'70%', left:'42%', size:26, op:0.06, rot:'8deg',   d:'6.2s', delay:'2.5s' },
+    { ch:'T', top:'45%', left:'44%', size:20, op:0.05, rot:'-20deg', d:'9.0s', delay:'4.0s' },
+    { ch:'E', top:'88%', left:'25%', size:32, op:0.06, rot:'14deg',  d:'7.8s', delay:'1.3s' },
+    { ch:'N', top:'5%',  left:'32%', size:24, op:0.05, rot:'-6deg',  d:'8.5s', delay:'2.8s' },
+    { ch:'B', top:'90%', right:'20%',size:38, op:0.06, rot:'-18deg', d:'6.7s', delay:'0.6s' },
+  ]
+  const glimmers = [
+    { top:'18%', left:'82%' }, { top:'42%', left:'14%' },
+    { top:'65%', left:'78%' }, { top:'28%', left:'52%' },
+    { top:'82%', left:'38%' }, { top:'10%', left:'60%' },
+  ]
+  return (
+    <div style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'hidden', zIndex:0 }}>
+      {/* Deep cosmic indigo base */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 100% 60% at 50% 110%, #190e00 0%, #0c0818 42%, #04030b 100%)' }} />
+      {/* Purple nebula from top */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 110% 60% at 50% -10%, rgba(75,15,140,0.5) 0%, rgba(45,10,90,0.15) 45%, transparent 65%)' }} />
+      {/* Amber book-light glow from bottom */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 85% 35% at 50% 115%, rgba(200,130,0,0.25) 0%, rgba(160,90,0,0.08) 40%, transparent 55%)' }} />
+      {/* Warm mid-shelf glow */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 60% 25% at 50% 75%, rgba(120,70,0,0.1) 0%, transparent 55%)' }} />
+      {/* Edge vignette */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse at 50% 50%, transparent 22%, rgba(0,0,0,0.85) 100%)' }} />
+      {/* Ruled lines (book pages) */}
+      <div style={{ position:'absolute', inset:0,
+        backgroundImage:'repeating-linear-gradient(0deg, rgba(180,140,60,0.022) 0px, rgba(180,140,60,0.022) 1px, transparent 1px, transparent 22px)' }} />
+      {/* Vertical column guides */}
+      <div style={{ position:'absolute', inset:0,
+        backgroundImage:'repeating-linear-gradient(90deg, rgba(120,80,20,0.015) 0px, rgba(120,80,20,0.015) 1px, transparent 1px, transparent 40px)' }} />
+      {/* Gold letter glyphs */}
+      {letters.map((l,i) => (
+        <div key={i} style={{
+          position:'absolute', top:l.top, left:l.left, right:l.right,
+          fontSize:l.size, fontFamily:'Oswald,serif', fontWeight:700,
+          color:`rgba(220,175,60,1)`, opacity:l.op,
+          letterSpacing:'0.05em', userSelect:'none',
+          '--lr': l.rot, '--lop': l.op,
+          animation:`wcLetFloat ${l.d} ease-in-out ${l.delay} infinite`,
+          transform:`rotate(${l.rot})`,
+        }}>{l.ch}</div>
+      ))}
+      {/* Gold glimmer points */}
+      {glimmers.map((g,i) => (
+        <div key={i} style={{
+          position:'absolute', top:g.top, left:g.left,
+          width:3, height:3, borderRadius:'50%',
+          background:'rgba(220,175,60,0.6)',
+          boxShadow:'0 0 6px 2px rgba(220,175,60,0.3)',
+          animation:`wcGlimmer ${2.2+i*0.5}s ease-in-out ${i*0.6}s infinite`,
+        }} />
+      ))}
+      {/* Thin gold border */}
+      <div style={{ position:'absolute', inset:10, borderRadius:12, border:'1px solid rgba(180,130,20,0.08)' }} />
+    </div>
+  )
+}
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 export default function WordChainGame({ roomId, roomParticipants, currentUser, invite, onClose }) {
@@ -577,8 +647,9 @@ export default function WordChainGame({ roomId, roomParticipants, currentUser, i
   )
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'radial-gradient(ellipse at 50% 0%,#071a12 0%,#060810 70%)', position: 'relative' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#04030b', position: 'relative' }}>
       <style>{WC_STYLES}</style>
+      <WcBg />
 
       {!game && invite && (
         <InviteWaitingRoom invite={invite} roomParticipants={roomParticipants} currentUser={currentUser} roomId={roomId} onStartGame={handleStartGame} onCancel={handleCancelInvite} />

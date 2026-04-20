@@ -46,6 +46,9 @@ const UNO_STYLES = `
   @keyframes unoSpinCCW { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
   @keyframes unoPop     { 0%{transform:scale(.8);opacity:0}60%{transform:scale(1.1)}100%{transform:scale(1);opacity:1} }
   @keyframes colorBandIn{ from{opacity:0;transform:scaleX(.6)}to{opacity:1;transform:scaleX(1)} }
+  @keyframes unoCardDrift { 0%,100%{transform:rotate(var(--cr)) translateY(0) scale(1)} 50%{transform:rotate(calc(var(--cr) + 5deg)) translateY(-14px) scale(1.04)} }
+  @keyframes unoChipSpin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes unoLampPulse { 0%,100%{opacity:0.55} 50%{opacity:0.85} }
   .uno-drop     { animation: unoDrop   .42s cubic-bezier(.175,.885,.32,1.275) both; }
   .uno-glow     { animation: unoGlow   1.8s ease-in-out infinite; }
   .uno-blink    { animation: unoBlink    1s ease-in-out infinite; }
@@ -465,6 +468,73 @@ function GameOver({ game, currentUser, onPlayAgain, onClose }) {
   )
 }
 
+// ─── Casino Background ─────────────────────────────────────────────────────────
+
+function UnoBg() {
+  const cards = [
+    { top:'6%',  left:'4%',   w:38, h:56, r:'-20deg', d:'3.2s', delay:'0s'   },
+    { top:'12%', right:'5%',  w:32, h:48, r:'25deg',  d:'4.1s', delay:'0.6s' },
+    { top:'62%', left:'3%',   w:36, h:52, r:'-10deg', d:'5.0s', delay:'1.1s' },
+    { top:'68%', right:'5%',  w:30, h:44, r:'18deg',  d:'3.8s', delay:'0.3s' },
+    { top:'38%', left:'1%',   w:28, h:42, r:'30deg',  d:'4.6s', delay:'1.8s' },
+    { top:'48%', right:'2%',  w:34, h:50, r:'-15deg', d:'3.5s', delay:'0.9s' },
+  ]
+  const chips = [
+    { top:'22%', left:'89%', size:22 },
+    { top:'74%', left:'8%',  size:18 },
+    { top:'55%', left:'93%', size:14 },
+  ]
+  return (
+    <div style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'hidden', zIndex:0 }}>
+      {/* Base green felt */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 140% 65% at 50% -15%, #1d5c34 0%, #0b2a17 38%, #050c07 100%)' }} />
+      {/* Overhead lamp warm glow */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 75% 50% at 50% 0%, rgba(255,200,80,0.09) 0%, transparent 60%)' }} />
+      {/* Inner spotlight on table */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 60% 45% at 50% 38%, rgba(28,110,58,0.2) 0%, transparent 65%)' }} />
+      {/* Edge vignette */}
+      <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0,0,0,0.82) 100%)' }} />
+      {/* Felt weave texture */}
+      <div style={{ position:'absolute', inset:0,
+        backgroundImage:'repeating-linear-gradient(0deg, rgba(255,255,255,0.007) 0px, rgba(255,255,255,0.007) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(90deg, rgba(255,255,255,0.007) 0px, rgba(255,255,255,0.007) 1px, transparent 1px, transparent 5px)' }} />
+      {/* Diagonal felt weave */}
+      <div style={{ position:'absolute', inset:0,
+        backgroundImage:'repeating-linear-gradient(45deg, rgba(255,255,255,0.004) 0px, rgba(255,255,255,0.004) 1px, transparent 1px, transparent 8px)' }} />
+      {/* Gold border accent */}
+      <div style={{ position:'absolute', inset:12, borderRadius:14, border:'1px solid rgba(212,175,55,0.07)' }} />
+      <div style={{ position:'absolute', inset:24, borderRadius:10, border:'1px solid rgba(212,175,55,0.04)' }} />
+      {/* Floating card silhouettes */}
+      {cards.map((c,i) => (
+        <div key={i} style={{
+          position:'absolute', top:c.top, left:c.left, right:c.right,
+          width:c.w, height:c.h, borderRadius:5,
+          border:'1px solid rgba(255,255,255,0.06)',
+          background:'rgba(0,0,0,0.18)',
+          style: `--cr:${c.r}`,
+          animation:`unoCardDrift ${c.d} ease-in-out ${c.delay} infinite`,
+          transform:`rotate(${c.r})`,
+        }}>
+          <div style={{ position:'absolute', inset:3, borderRadius:3, border:'1px solid rgba(255,255,255,0.04)' }} />
+        </div>
+      ))}
+      {/* Gold chip rings */}
+      {chips.map((chip,i) => (
+        <div key={i} style={{
+          position:'absolute', top:chip.top, left:chip.left,
+          width:chip.size, height:chip.size, borderRadius:'50%',
+          border:'1px solid rgba(212,175,55,0.13)',
+          animation:`unoLampPulse ${2.5 + i*0.7}s ease-in-out ${i*0.8}s infinite`,
+        }}>
+          <div style={{ position:'absolute', inset:3, borderRadius:'50%', border:'1px solid rgba(212,175,55,0.07)' }} />
+        </div>
+      ))}
+      {/* Center table oval */}
+      <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'55%', height:'45%',
+        borderRadius:'50%', border:'1px solid rgba(30,100,55,0.2)', background:'transparent' }} />
+    </div>
+  )
+}
+
 // ─── Main UnoGame ──────────────────────────────────────────────────────────────
 
 export default function UnoGame({ roomId, roomParticipants, currentUser, invite, onClose }) {
@@ -560,23 +630,26 @@ export default function UnoGame({ roomId, roomParticipants, currentUser, invite,
   if (!game) {
     if (invite) {
       return (
-        <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'radial-gradient(ellipse at 50% 0%,#1a0828 0%,#080814 70%)' }}>
+        <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',background:'#050c07' }}>
           <style>{UNO_STYLES}</style>
+          <UnoBg />
           <InviteWaitingRoom invite={invite} roomParticipants={roomParticipants} currentUser={currentUser} roomId={roomId} onStartGame={handleStartGame} onCancel={handleCancelInvite} />
         </div>
       )
     }
     return (
-      <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'radial-gradient(ellipse at 50% 0%,#1a0828 0%,#080814 70%)' }}>
+      <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',background:'#050c07' }}>
         <style>{UNO_STYLES}</style>
+        <UnoBg />
         <SetupLobby roomParticipants={roomParticipants} currentUser={currentUser} roomId={roomId} onClose={onClose} />
       </div>
     )
   }
 
   if (game.status==='finished') return (
-    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'radial-gradient(ellipse at 50% 0%,#1a0828 0%,#080814 70%)' }}>
+    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',background:'#050c07' }}>
       <style>{UNO_STYLES}</style>
+      <UnoBg />
       <GameOver game={game} currentUser={currentUser} onPlayAgain={handlePlayAgain} onClose={handleClose} />
     </div>
   )
@@ -596,8 +669,9 @@ export default function UnoGame({ roomId, roomParticipants, currentUser, invite,
   const ambientGlow  = curColor ? CC[curColor]?.glow : topCard ? CC[topCard.color]?.glow : 'rgba(100,80,200,0.15)'
 
   return (
-    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',background:'radial-gradient(ellipse at 50% 20%,#18082e 0%,#080814 70%)' }}>
+    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',background:'#050c07' }}>
       <style>{UNO_STYLES}</style>
+      <UnoBg />
 
       {/* Active colour band */}
       <ColorBand color={curColor} />
