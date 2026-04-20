@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import UnoGame from './games/UnoGame'
 import PictionaryGame from './games/PictionaryGame'
+import WordChainGame from './games/WordChainGame'
 
 const GAMES = [
   {
@@ -27,6 +28,16 @@ const GAMES = [
     available: true,
     gradient: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     glow: 'rgba(99,102,241,0.35)',
+  },
+  {
+    id: 'wordchain',
+    name: 'Word Chain',
+    icon: '🔤',
+    desc: 'Continue from the last letter of the previous word — don\'t repeat, don\'t hesitate!',
+    players: '2–10',
+    available: true,
+    gradient: 'linear-gradient(135deg, #10b981, #3b82f6)',
+    glow: 'rgba(16,185,129,0.35)',
   },
 ]
 
@@ -67,8 +78,8 @@ function GameCard({ game, onSelect }) {
 export default function GamesOverlay({ roomId, roomParticipants, currentUser, onClose, invite, initialGame }) {
   const [activeGame, setActiveGame] = useState(initialGame || null)
 
-  if (activeGame === 'uno' || activeGame === 'pictionary') {
-    const gameLabel = activeGame === 'uno' ? 'UNO' : 'PICTIONARY'
+  if (activeGame === 'uno' || activeGame === 'pictionary' || activeGame === 'wordchain') {
+    const gameLabel = activeGame === 'uno' ? 'UNO' : activeGame === 'pictionary' ? 'PICTIONARY' : 'WORD CHAIN'
     return (
       <div style={{
         position: 'fixed', inset: 0, zIndex: 1000,
@@ -94,6 +105,14 @@ export default function GamesOverlay({ roomId, roomParticipants, currentUser, on
         )}
         {activeGame === 'pictionary' && (
           <PictionaryGame
+            roomId={roomId}
+            roomParticipants={roomParticipants}
+            currentUser={currentUser}
+            onClose={() => setActiveGame(null)}
+          />
+        )}
+        {activeGame === 'wordchain' && (
+          <WordChainGame
             roomId={roomId}
             roomParticipants={roomParticipants}
             currentUser={currentUser}
