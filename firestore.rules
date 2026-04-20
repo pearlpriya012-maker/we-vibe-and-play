@@ -15,10 +15,20 @@ service cloud.firestore {
     match /rooms/{roomId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
-      allow update: if request.auth != null &&
-        request.auth.uid in resource.data.participants.map(p => p['uid']);
+      allow update: if request.auth != null && (
+        // Existing participant can update anything
+        request.auth.uid in resource.data.participants.map(p => p['uid']) ||
+        // Non-participant joining: may only touch participants + lastActivity
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['participants', 'lastActivity'])
+      );
       allow delete: if request.auth != null &&
         request.auth.uid == resource.data.hostId;
+
+      // UNO game — any authenticated participant can read/write
+      match /uno/{doc} {
+        allow read, write: if request.auth != null;
+      }
 
       // Messages — any authenticated user in the room can read/write
       match /messages/{messageId} {
