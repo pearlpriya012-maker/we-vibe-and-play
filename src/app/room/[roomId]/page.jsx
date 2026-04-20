@@ -14,6 +14,8 @@ import {
 } from '@/lib/rooms'
 import dynamic from 'next/dynamic'
 import GamesOverlay from '@/components/GamesOverlay'
+import GameInviteToast from '@/components/games/GameInviteToast'
+import { subscribeUnoInvite } from '@/lib/unoFirestore'
 
 function Avatar({ user, size = 32 }) {
   if (user?.photoURL) return <img src={user.photoURL} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)', flexShrink: 0 }} />
@@ -953,6 +955,8 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [showGames, setShowGames] = useState(false)
+  const [unoInvite, setUnoInvite] = useState(null)
+  const [directGame, setDirectGame] = useState(null)
   const [musicMode, setMusicMode] = useState(true)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -1015,6 +1019,12 @@ export default function RoomPage() {
     if (!user) { router.replace('/auth/login'); return }
     return subscribeToRoom(roomId, data => { setRoom(data); roomRef.current = data; setLoading(false) })
   }, [roomId, user])
+
+  // ─── UNO invite subscription
+  useEffect(() => {
+    if (!roomId) return
+    return subscribeUnoInvite(roomId, setUnoInvite)
+  }, [roomId])
 
   // ─── Live YouTube token from Firestore (refreshes when user connects in Settings) ───
   useEffect(() => {
@@ -2658,7 +2668,7 @@ export default function RoomPage() {
           </div>
         </header>
 
-        {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => setShowGames(false)} />}
+        {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => { setShowGames(false); setDirectGame(null) }} invite={unoInvite} initialGame={directGame} />}
 
         {/* Mobile Content Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
@@ -2788,7 +2798,7 @@ export default function RoomPage() {
             )}
           </div>
         </header>
-        {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => setShowGames(false)} />}
+        {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => { setShowGames(false); setDirectGame(null) }} invite={unoInvite} initialGame={directGame} />}
 
         {/* URL Bar — host only */}
         {isHost && (
@@ -2971,7 +2981,7 @@ export default function RoomPage() {
           </div>
         </header>
 
-        {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => setShowGames(false)} />}
+        {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => { setShowGames(false); setDirectGame(null) }} invite={unoInvite} initialGame={directGame} />}
 
         {/* Body — video + chat sidebar */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
@@ -3113,7 +3123,8 @@ export default function RoomPage() {
         </div>
       </header>
 
-      {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => setShowGames(false)} />}
+      {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => { setShowGames(false); setDirectGame(null) }} invite={unoInvite} initialGame={directGame} />}
+      <GameInviteToast invite={unoInvite} currentUser={user} roomId={roomId} onAccept={() => { setDirectGame('uno'); setShowGames(true) }} onDecline={() => {}} />
 
       {/* 3-Column Layout */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `${videoFocus ? '0px' : leftCollapsed ? '48px' : '280px'} 1fr ${videoFocus ? '0px' : '300px'}`, overflow: 'hidden', position: 'relative', zIndex: 1, transition: 'grid-template-columns 0.3s ease' }}>

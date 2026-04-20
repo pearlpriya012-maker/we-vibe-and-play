@@ -112,8 +112,8 @@ function GameCard({ game, onSelect }) {
   )
 }
 
-export default function GamesOverlay({ roomId, roomParticipants, currentUser, onClose }) {
-  const [activeGame, setActiveGame] = useState(null)
+export default function GamesOverlay({ roomId, roomParticipants, currentUser, onClose, invite, initialGame }) {
+  const [activeGame, setActiveGame] = useState(initialGame || null)
 
   if (activeGame === 'uno') {
     return (
@@ -134,6 +134,7 @@ export default function GamesOverlay({ roomId, roomParticipants, currentUser, on
           roomId={roomId}
           roomParticipants={roomParticipants}
           currentUser={currentUser}
+          invite={invite}
           onClose={() => setActiveGame(null)}
         />
       </div>
