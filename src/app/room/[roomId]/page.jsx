@@ -523,7 +523,7 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
         <>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             <div style={{ position: 'relative' }}>
-              <input type="text" value={query} onChange={e => handleSearch(e.target.value)} placeholder="Search songs, artists…" className="input-vibe" style={{ fontSize: '0.85rem', padding: '10px 36px 10px 12px' }} />
+              <input type="search" value={query} onChange={e => handleSearch(e.target.value)} placeholder="Search songs, artists…" className="input-vibe" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} style={{ fontSize: '0.85rem', padding: '10px 36px 10px 12px' }} />
               <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }}>{searching ? '⏳' : '🔍'}</span>
             </div>
           </div>
@@ -966,6 +966,7 @@ export default function RoomPage() {
   const [duration, setDuration] = useState(0)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [videoFocus, setVideoFocus] = useState(false)
+  const [focusLandscape, setFocusLandscape] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
   const [volume, setVolume] = useState(100)
   const [muted, setMuted] = useState(false)
@@ -2530,7 +2531,9 @@ export default function RoomPage() {
           ? { position: 'fixed', top: 0, left: 0, width: 1, height: 1, opacity: 0.001, pointerEvents: 'none', zIndex: -1 }
           : { position: 'fixed', left: '-2000px', top: '-2000px', width: 320, height: 180, pointerEvents: 'none', zIndex: -1 })
       : (!isMobile && videoFocus)
-        ? { position: 'relative', width: 'min(100%, calc((100vh - 270px) * 1.778))', aspectRatio: '16/9', overflow: 'hidden', flexShrink: 0, borderRadius: 14 }
+        ? focusLandscape
+          ? { position: 'relative', width: 'min(100%, calc((100vh - 270px) * 1.778))', aspectRatio: '16/9', overflow: 'hidden', flexShrink: 0, borderRadius: 14 }
+          : { position: 'relative', width: 'min(50%, calc((100vh - 270px) * 0.5625))', aspectRatio: '9/16', overflow: 'hidden', flexShrink: 0, borderRadius: 14 }
         : { position: 'relative', width: '100%', paddingTop: '56.25%', overflow: 'hidden', flexShrink: 0, borderRadius: 14 }
     }>
       <YouTube
@@ -2687,7 +2690,7 @@ export default function RoomPage() {
         {showGames && <GamesOverlay roomId={roomId} roomParticipants={room.participants || []} currentUser={user} onClose={() => { setShowGames(false); setDirectGame(null) }} unoInvite={unoInvite} pictionaryInvite={pictionaryInvite} wordchainInvite={wordchainInvite} initialGame={directGame} />}
 
         {/* Mobile Content Area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowX: 'hidden', overflowY: musicMode ? 'hidden' : 'auto', WebkitOverflowScrolling: 'touch', position: 'relative', zIndex: 1 }}>
 
           {/* ── Participants strip (top) ── */}
           <div style={{ flexShrink: 0, borderBottom: '1px solid var(--border)', padding: '7px 12px', background: 'rgba(13,13,13,0.7)' }}>
@@ -2731,7 +2734,7 @@ export default function RoomPage() {
           </div>
 
           {/* ── Tab Bar ── */}
-          <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(13,13,13,0.8)', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(13,13,13,0.97)', overflowX: 'auto', scrollbarWidth: 'none', position: musicMode ? 'static' : 'sticky', top: 0, zIndex: musicMode ? 'auto' : 5, backdropFilter: 'blur(12px)' }}>
             <style>{`#mob-tabs::-webkit-scrollbar{display:none}`}</style>
             <div id="mob-tabs" style={{ display: 'flex', width: '100%' }}>
               {[['search','🔍','Search'],['queue','🎵','Queue'],['playlists','📋','Playlist'],['aibond','🐻‍❄️','AI Bond'],['chat','💬','Chat'],['lyrics','📝','Lyrics']].map(([id, icon, label]) => {
@@ -2749,7 +2752,7 @@ export default function RoomPage() {
           </div>
 
           {/* ── Tab Content ── */}
-          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+          <div style={{ flex: musicMode ? 1 : 'none', height: musicMode ? undefined : '68vh', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
             <div style={{ display: mobileTab === 'search' || mobileTab === 'queue' || mobileTab === 'playlists' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <SearchAndQueue room={room} isHost={canFullControl} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => canFullControl && removeFromQueue(roomId, i)} ytAccessToken={ytToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} hideTabs={true} roomId={roomId} playedHistory={room.playedHistory || []} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} onTokenExpired={refreshYtToken} />
             </div>
@@ -3182,11 +3185,18 @@ export default function RoomPage() {
             <>
               {/* Video mode: player + focus button */}
               {!musicMode && (
-                <div style={{ position: 'relative', width: videoFocus ? 'min(100%, calc((100vh - 270px) * 1.778))' : '100%', maxWidth: videoFocus ? undefined : 700, flexShrink: 0, borderRadius: videoFocus ? 8 : 14, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+                <div style={{ position: 'relative', width: videoFocus ? (focusLandscape ? 'min(100%, calc((100vh - 270px) * 1.778))' : 'min(50%, calc((100vh - 270px) * 0.5625))') : '100%', maxWidth: videoFocus ? undefined : 700, flexShrink: 0, borderRadius: videoFocus ? 8 : 14, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
                   {ytPlayerEl}
-                  <button onClick={() => setVideoFocus(f => !f)} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.65)', border: `1px solid ${videoFocus ? 'rgba(52,152,219,0.7)' : 'rgba(255,255,255,0.25)'}`, borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'Oswald', color: videoFocus ? 'var(--cyan)' : '#fff', fontSize: '0.72rem', letterSpacing: '0.1em', transition: 'all 0.2s', backdropFilter: 'blur(4px)' }}>
+                  {/* Focus toggle */}
+                  <button onClick={() => { setVideoFocus(f => !f); setFocusLandscape(true) }} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.65)', border: `1px solid ${videoFocus ? 'rgba(52,152,219,0.7)' : 'rgba(255,255,255,0.25)'}`, borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'Oswald', color: videoFocus ? 'var(--cyan)' : '#fff', fontSize: '0.72rem', letterSpacing: '0.1em', transition: 'all 0.2s', backdropFilter: 'blur(4px)' }}>
                     {videoFocus ? '✕ EXIT FOCUS' : '⛶ FOCUS'}
                   </button>
+                  {/* Orientation toggle — only visible in focus mode */}
+                  {videoFocus && (
+                    <button onClick={() => setFocusLandscape(l => !l)} title={focusLandscape ? 'Switch to portrait' : 'Switch to landscape'} style={{ position: 'absolute', top: 10, right: videoFocus ? 130 : undefined, left: videoFocus ? undefined : 10, zIndex: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.65)', border: `1px solid ${focusLandscape ? 'rgba(255,255,255,0.25)' : 'rgba(249,115,22,0.7)'}`, borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontFamily: 'Oswald', color: focusLandscape ? '#fff' : '#f97316', fontSize: '0.68rem', letterSpacing: '0.08em', backdropFilter: 'blur(4px)', transition: 'all 0.2s' }}>
+                      {focusLandscape ? '↕ PORTRAIT' : '↔ LANDSCAPE'}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -3240,7 +3250,7 @@ export default function RoomPage() {
                 </div>
               ) : (
                 // Video mode controls
-                <div style={{ width: '100%', maxWidth: videoFocus ? 'min(100%, calc((100vh - 270px) * 1.778))' : 500 }}>
+                <div style={{ width: '100%', maxWidth: videoFocus ? (focusLandscape ? 'min(100%, calc((100vh - 270px) * 1.778))' : 'min(50%, calc((100vh - 270px) * 0.5625))') : 500 }}>
                   <div style={{ textAlign: 'center', marginBottom: 14 }}>
                     <div style={{ fontWeight: 600, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.currentTrack.title}</div>
                     <div style={{ color: 'var(--text-dim)', fontSize: '0.875rem', marginTop: 4 }}>{room.currentTrack.channelTitle}</div>
