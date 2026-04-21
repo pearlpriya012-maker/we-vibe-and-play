@@ -3149,7 +3149,6 @@ export default function RoomPage() {
           }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: musicMode ? 'rgba(0,255,136,0.08)' : 'rgba(52,152,219,0.08)', border: `1px solid ${musicMode ? 'rgba(0,255,136,0.3)' : 'rgba(52,152,219,0.3)'}`, borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontFamily: 'Oswald', color: musicMode ? 'var(--green)' : 'var(--cyan)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>
             {musicMode ? '🎵 MUSIC' : '📺 VIDEO'}
           </button>
-          {volumeWidget}
           <button onClick={copyCode} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontFamily: 'Oswald', letterSpacing: '0.12em', color: 'var(--green)', fontSize: '0.85rem' }}>
             {copied ? '✅' : '📋'} {room.roomCode}
           </button>
