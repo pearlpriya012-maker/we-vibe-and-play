@@ -1242,6 +1242,24 @@ export default function RoomPage() {
       clearInterval(bgWatchdogRef.current)
       try {
         const state = p.getPlayerState?.()
+        const YT_ENDED = window.YT?.PlayerState?.ENDED ?? 0
+        // If the song ended while the tab was hidden, advance the queue instead
+        // of replaying the same song.
+        if (state === YT_ENDED) {
+          if (Date.now() - lastSkipAtRef.current < 4000) return // already handled
+          lastSkipAtRef.current = Date.now()
+          const liveIsHost = roomRef.current?.hostId === user?.uid
+          if (liveIsHost) {
+            skipToNext(roomId).catch(() => {})
+          } else {
+            import('firebase/firestore').then(({ updateDoc, doc }) =>
+              import('@/lib/firebase').then(({ db }) =>
+                updateDoc(doc(db, 'rooms', roomId), { skipRequested: Date.now() }).catch(() => {})
+              )
+            )
+          }
+          return
+        }
         if (state !== 1) {
           if (liveRoom.currentTime) {
             const elapsed = (Date.now() - (liveRoom.currentTimeAt || Date.now())) / 1000
