@@ -667,7 +667,8 @@ export default function UnoGame({ roomId, roomParticipants, currentUser, invite,
   const myHand     = getMyHand(game, currentUser.uid)
   const opponents  = getOpponentCounts(game, currentUser.uid)
   const myTurn     = isMyTurn(game, currentUser.uid)
-  const needsColor = needsColorPick(game, currentUser.uid)
+  const _selCard   = selectedCardId ? myHand.find(c => c.id === selectedCardId) : null
+  const needsColor = needsColorPick(game, currentUser.uid) || _selCard?.value === 'wild' || _selCard?.value === 'wilddraw4'
   const topCard    = game.discardPile?.[game.discardPile.length-1]
   const prevCard   = game.discardPile?.length>1 ? game.discardPile[game.discardPile.length-2] : null
   const curColor   = game.currentColor
