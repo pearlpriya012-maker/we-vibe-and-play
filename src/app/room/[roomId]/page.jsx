@@ -252,7 +252,7 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, o
               <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>{track.channelTitle} · {track.durationFormatted}</div>
             </div>
             <button
-              onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue({ ...track, playlistId: selectedPlaylistMeta?.id, playlistName: selectedPlaylistMeta?.title, playlistThumb: selectedPlaylistMeta?.thumbnail }); toast.success('Added!') }}
+              onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue({ ...track, playlistId: selectedPlaylistMeta?.id, playlistName: selectedPlaylistMeta?.title, playlistThumb: selectedPlaylistMeta?.thumbnail }) }}
               style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0 }}
             >+ ADD</button>
           </div>
@@ -369,7 +369,7 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
         </div>
       </div>
       <button
-        onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue(track); toast.success('Added!') }}
+        onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue(track) }}
         style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0 }}
       >+ ADD</button>
     </div>
@@ -411,7 +411,7 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
                       <div style={{ flex: 1, overflow: 'hidden' }}>
                         <div style={{ fontSize: '0.68rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
                       </div>
-                      {canAdd && <button onClick={() => { onAddToQueue(track); toast.success('Re-added!') }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)', borderRadius: 4, padding: '2px 6px', fontSize: '0.6rem', cursor: 'pointer', flexShrink: 0 }}>↻</button>}
+                      {canAdd && <button onClick={() => { onAddToQueue(track) }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)', borderRadius: 4, padding: '2px 6px', fontSize: '0.6rem', cursor: 'pointer', flexShrink: 0 }}>↻</button>}
                     </div>
                   ))}
                   <div style={{ height: 1, background: 'var(--border)', margin: '4px 6px 8px' }} />
@@ -740,7 +740,7 @@ function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
     try {
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(rec.title + ' ' + rec.artist)}&limit=1`)
       const data = await res.json()
-      if (data.results?.[0]) { await onAddToQueue(data.results[0]); toast.success('Added!') }
+      if (data.results?.[0]) { await onAddToQueue(data.results[0]) }
       else toast.error('Not found on YouTube')
     } catch { toast.error('Failed to add') }
   }
@@ -2414,13 +2414,23 @@ export default function RoomPage() {
   }
 
   async function handleAddToQueue(track) {
-    try { await addToQueue(roomId, track) } catch (err) { toast.error(err.message) }
+    try {
+      const q = room?.queue || []
+      if (q.length >= 100) { toast.error('Queue is full (100 tracks max)'); return }
+      if (!room?.currentTrack) {
+        // Nothing playing — auto-play immediately (no queue append needed)
+        await setCurrentTrack(roomId, track)
+      } else {
+        await addToQueue(roomId, track)
+      }
+      toast.success('Added!')
+    } catch (err) { toast.error(err.message) }
   }
 
   async function handleStartPlaylist(tracks, playlistMeta) {
     try {
       const tagged = tracks.map(t => ({ ...t, playlistId: playlistMeta?.id, playlistName: playlistMeta?.title, playlistThumb: playlistMeta?.thumbnail }))
-      await addManyToQueue(roomId, tagged)
+      await addManyToQueue(roomId, tagged, room)
       toast.success(`▶ Playing ${tracks.length} songs`)
     } catch (err) { toast.error(err.message) }
   }
@@ -2429,7 +2439,7 @@ export default function RoomPage() {
     try {
       const shuffled = [...tracks].sort(() => Math.random() - 0.5)
       const tagged = shuffled.map(t => ({ ...t, playlistId: playlistMeta?.id, playlistName: playlistMeta?.title, playlistThumb: playlistMeta?.thumbnail }))
-      await addManyToQueue(roomId, tagged)
+      await addManyToQueue(roomId, tagged, room)
       toast.success(`🔀 Shuffling ${tracks.length} songs`)
     } catch (err) { toast.error(err.message) }
   }

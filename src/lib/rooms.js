@@ -144,21 +144,8 @@ export async function updatePlayback(roomId, { isPlaying, currentTime, currentTr
 
 // ─── Queue management ───
 export async function addToQueue(roomId, track) {
-  const room = await getRoom(roomId)
-  if (!room) throw new Error('Room not found')
-  if (room.queue.length >= 100) throw new Error('Queue is full (100 tracks max)')
-
-  // If nothing is playing, auto-play this track immediately
-  if (!room.currentTrack) {
-    await updateDoc(doc(db, 'rooms', roomId), {
-      currentTrack: track,
-      isPlaying: true,
-      currentTime: 0,
-      lastActivity: serverTimestamp(),
-    })
-    return
-  }
-
+  // Fast path: no extra getRoom read — just append with arrayUnion.
+  // Caller is responsible for auto-play if !currentTrack (use setCurrentTrack).
   await updateDoc(doc(db, 'rooms', roomId), {
     queue: arrayUnion(track),
     lastActivity: serverTimestamp(),
@@ -172,9 +159,9 @@ export async function removeFromQueue(roomId, trackIndex) {
   await updateDoc(doc(db, 'rooms', roomId), { queue: newQueue })
 }
 
-export async function addManyToQueue(roomId, tracks) {
+export async function addManyToQueue(roomId, tracks, currentRoom = null) {
   if (!tracks || tracks.length === 0) return
-  const room = await getRoom(roomId)
+  const room = currentRoom || await getRoom(roomId)
   if (!room) throw new Error('Room not found')
   const existing = room.queue || []
   const cap = Math.max(0, 100 - existing.length)
