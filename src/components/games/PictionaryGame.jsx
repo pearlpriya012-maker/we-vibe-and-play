@@ -546,7 +546,7 @@ function Lobby({ roomParticipants, currentUser, roomId, onClose }) {
 
 // ─── WordChoiceScreen ──────────────────────────────────────────────────────────
 
-function WordChoiceScreen({ game, currentUser, roomId }) {
+function WordChoiceScreen({ game, currentUser, roomId, onClose }) {
   const isDrawer = game.drawerUid === currentUser.uid
   const [choosing, setChoosing] = useState(false)
 
@@ -557,7 +557,8 @@ function WordChoiceScreen({ game, currentUser, roomId }) {
 
   if (!isDrawer) {
     return (
-      <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:18, padding:24 }}>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:18, padding:24, position:'relative' }}>
+        <button onClick={onClose} title="End game" style={{ position:'absolute', top:12, right:12, width:28, height:28, borderRadius:7, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.25)', color:'#ef4444', cursor:'pointer', fontSize:'0.8rem', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
         <div style={{ fontSize:'3rem', animation:'pPulse 1.5s ease-in-out infinite' }}>🎨</div>
         <div style={{ fontFamily:'Oswald', fontSize:'1.2rem', color:'#fff', letterSpacing:'0.1em', textAlign:'center' }}>
           {game.players[game.drawerUid]?.displayName} is choosing a word…
@@ -570,7 +571,8 @@ function WordChoiceScreen({ game, currentUser, roomId }) {
   }
 
   return (
-    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:22, padding:24 }}>
+    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:22, padding:24, position:'relative' }}>
+      <button onClick={onClose} title="End game" style={{ position:'absolute', top:12, right:12, width:28, height:28, borderRadius:7, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.25)', color:'#ef4444', cursor:'pointer', fontSize:'0.8rem', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
       <div style={{ fontFamily:'Oswald', fontSize:'1rem', color:'rgba(255,255,255,0.5)', letterSpacing:'0.14em' }}>ROUND {game.round} / {game.totalRounds} — PICK YOUR WORD</div>
       <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:340 }}>
         {(game.wordOptions || []).map(w => (
@@ -593,7 +595,7 @@ function WordChoiceScreen({ game, currentUser, roomId }) {
 
 // ─── RoundEndScreen ────────────────────────────────────────────────────────────
 
-function RoundEndScreen({ game, currentUser }) {
+function RoundEndScreen({ game, currentUser, onClose }) {
   const [count, setCount] = useState(5)
   useEffect(() => {
     const iv = setInterval(() => setCount(c => Math.max(0, c-1)), 1000)
@@ -623,6 +625,7 @@ function RoundEndScreen({ game, currentUser }) {
         Next round in {count}…
       </div>
       <ScoreStrip game={game} currentUser={currentUser} />
+      <button onClick={onClose} style={{ padding:'8px 22px', borderRadius:9, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.09)', color:'rgba(255,255,255,0.35)', fontFamily:'Oswald', fontSize:'0.72rem', cursor:'pointer', letterSpacing:'0.1em', marginTop:4 }}>End Game</button>
     </div>
   )
 }
@@ -733,23 +736,30 @@ function PictBg() {
 
 export default function PictionaryGame({ roomId, roomParticipants, currentUser, invite, onClose }) {
   const [game, setGame]               = useState(null)
+  const [loading, setLoading]         = useState(true)
   const [canvasData, setCanvasData]   = useState({ strokes: {}, clearedAt: 0 })
   const [pendingStrokes, setPending]  = useState([])
   const [tool, setTool]               = useState('pen')
   const [brushColor, setBrushColor]   = useState('#000000')
   const [brushSize, setBrushSize]     = useState(6)
-  const gameRef = useRef(null)
+  const gameRef          = useRef(null)
+  const lastClearedAtRef = useRef(0)   // tracks last canvas-clear timestamp to wipe pendingStrokes
 
   useEffect(() => {
-    const u1 = subscribePictionaryGame(roomId, s => { setGame(s); gameRef.current = s })
+    const u1 = subscribePictionaryGame(roomId, s => { setGame(s); gameRef.current = s; setLoading(false) })
     const u2 = subscribeCanvas(roomId, setCanvasData)
     return () => { u1(); u2() }
   }, [roomId])
 
-  // Clear pending strokes when remote canvas confirms them
+  // Clear pending strokes when canvas is cleared between rounds, or remove confirmed strokes
   useEffect(() => {
-    const ids = new Set(Object.keys(canvasData.strokes || {}).map(Number))
-    setPending(p => p.filter(s => !ids.has(s.id)))
+    if (canvasData.clearedAt > lastClearedAtRef.current) {
+      lastClearedAtRef.current = canvasData.clearedAt
+      setPending([])
+    } else {
+      const ids = new Set(Object.keys(canvasData.strokes || {}).map(Number))
+      setPending(p => p.filter(s => !ids.has(s.id)))
+    }
   }, [canvasData])
 
   // ── Drawing actions ──
@@ -835,6 +845,10 @@ export default function PictionaryGame({ roomId, roomParticipants, currentUser, 
 
   // ── Render ──
 
+  if (loading) return (
+    <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Oswald', color:'rgba(255,255,255,0.3)', letterSpacing:'0.14em' }}>LOADING…</div>
+  )
+
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#070408', position:'relative', isolation:'isolate' }}>
       <style>{PICT_STYLES}</style>
@@ -852,7 +866,7 @@ export default function PictionaryGame({ roomId, roomParticipants, currentUser, 
 
       {/* Choosing word */}
       {game?.status === 'choosingWord' && (
-        <WordChoiceScreen game={game} currentUser={currentUser} roomId={roomId} />
+        <WordChoiceScreen game={game} currentUser={currentUser} roomId={roomId} onClose={handleClose} />
       )}
 
       {/* Game over */}
@@ -862,7 +876,7 @@ export default function PictionaryGame({ roomId, roomParticipants, currentUser, 
 
       {/* Round end */}
       {game?.status === 'roundEnd' && (
-        <RoundEndScreen game={game} currentUser={currentUser} />
+        <RoundEndScreen game={game} currentUser={currentUser} onClose={handleClose} />
       )}
 
       {/* Drawing round */}
@@ -871,11 +885,14 @@ export default function PictionaryGame({ roomId, roomParticipants, currentUser, 
 
           {/* Header */}
           <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background:'rgba(8,8,20,0.98)', borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontFamily:'Oswald', fontSize:'0.62rem', color:'rgba(255,255,255,0.35)', letterSpacing:'0.12em' }}>
-              Round {game.round}/{game.totalRounds}
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ fontFamily:'Oswald', fontSize:'0.62rem', color:'rgba(255,255,255,0.35)', letterSpacing:'0.12em' }}>Round {game.round}/{game.totalRounds}</div>
             </div>
             <WordHint game={game} currentUser={currentUser} />
-            <Timer roundStartedAt={game.roundStartedAt} turnSeconds={game.turnSeconds} onExpire={handleTimerExpire} isDrawer={isDrawer} />
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <Timer roundStartedAt={game.roundStartedAt} turnSeconds={game.turnSeconds} onExpire={handleTimerExpire} isDrawer={isDrawer} />
+              <button onClick={handleClose} title="End game" style={{ width:26, height:26, borderRadius:6, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.25)', color:'#ef4444', cursor:'pointer', fontSize:'0.75rem', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>✕</button>
+            </div>
           </div>
 
           {/* Canvas */}

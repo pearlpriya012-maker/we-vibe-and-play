@@ -251,10 +251,7 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, o
               <div style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>{track.channelTitle} · {track.durationFormatted}</div>
             </div>
-            <button
-              onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue({ ...track, playlistId: selectedPlaylistMeta?.id, playlistName: selectedPlaylistMeta?.title, playlistThumb: selectedPlaylistMeta?.thumbnail }) }}
-              style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0 }}
-            >+ ADD</button>
+            <AddButton canAdd={canAdd} onAdd={() => onAddToQueue({ ...track, playlistId: selectedPlaylistMeta?.id, playlistName: selectedPlaylistMeta?.title, playlistThumb: selectedPlaylistMeta?.thumbnail })} />
           </div>
         ))}
       </div>
@@ -285,6 +282,37 @@ function PlaylistPanel({ onAddToQueue, canAdd, ytAccessToken, onStartPlaylist, o
   )
 }
 
+// ─── Add-to-Queue Button with pop animation ───
+// Must be a top-level component (same rule as TrackRow) to keep identity stable.
+function AddButton({ canAdd, onAdd }) {
+  const [added, setAdded] = useState(false)
+  const tmRef = useRef(null)
+  useEffect(() => () => clearTimeout(tmRef.current), [])
+  function handleClick() {
+    if (!canAdd) { toast('Ask host to allow adding songs'); return }
+    if (added) return
+    setAdded(true)
+    onAdd()
+    tmRef.current = setTimeout(() => setAdded(false), 1600)
+  }
+  return (
+    <button
+      onClick={handleClick}
+      style={{
+        background: added ? 'rgba(0,255,136,0.22)' : (canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)'),
+        border: `1px solid ${added ? 'rgba(0,255,136,0.7)' : (canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)')}`,
+        color: added ? '#00ff88' : (canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)'),
+        borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem',
+        cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0,
+        animation: added ? 'addPop 0.32s ease-out' : 'none',
+        boxShadow: added ? '0 0 10px rgba(0,255,136,0.4)' : 'none',
+        transition: 'background 0.15s, border-color 0.2s, color 0.15s, box-shadow 0.25s',
+        whiteSpace: 'nowrap', minWidth: 58, textAlign: 'center',
+      }}
+    >{added ? '✓ ADDED' : '+ ADD'}</button>
+  )
+}
+
 // TrackRow MUST live outside SearchAndQueue — defining it inside causes React to
 // unmount+remount every row on each re-render (new function ref = new component
 // type), which resets the scroll position whenever room state updates.
@@ -294,17 +322,14 @@ function TrackRow({ track, showPlaylist, canAdd, onAddToQueue }) {
       onMouseEnter={e => e.currentTarget.style.background = 'var(--glass-hover)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
       <img src={track.thumbnail} alt="" style={{ width: 52, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        <div style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+      <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+        <div title={track.title} style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {track.channelTitle}{track.durationFormatted ? ` · ${track.durationFormatted}` : ''}
           {showPlaylist && track.playlistName && <span style={{ color: 'rgba(0,255,136,0.6)', marginLeft: 4 }}>· {track.playlistName}</span>}
         </div>
       </div>
-      <button
-        onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } onAddToQueue(track) }}
-        style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0 }}
-      >+ ADD</button>
+      <AddButton canAdd={canAdd} onAdd={() => onAddToQueue(track)} />
     </div>
   )
 }
@@ -873,10 +898,7 @@ function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
                       <div style={{ fontWeight: 500, fontSize: '0.85rem', marginBottom: 2 }}>{rec.title}</div>
                       <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{rec.artist}</div>
                     </div>
-                    <button
-                      onClick={() => { if (!canAdd) { toast('Ask host to allow adding songs'); return } handleAdd(rec) }}
-                      style={{ background: canAdd ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canAdd ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`, color: canAdd ? 'var(--green)' : 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '4px 10px', fontSize: '0.68rem', cursor: canAdd ? 'pointer' : 'default', fontFamily: 'Oswald', flexShrink: 0, whiteSpace: 'nowrap' }}
-                    >+ ADD</button>
+                    <AddButton canAdd={canAdd} onAdd={() => handleAdd(rec)} />
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontStyle: 'italic', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 8 }}>💡 {rec.reasoning}</div>
                 </div>
@@ -985,6 +1007,9 @@ export default function RoomPage() {
 
   const playerRef = useRef(null)
   const ytPlayerRef = useRef(null)   // actual YT IFrame player — set in handlePlayerReady
+  // Stable videoId passed to <YouTube> so react-youtube never destroy/recreates the
+  // iframe on track changes. We manage all video loads ourselves via loadAndPlay.
+  const ytStableVideoIdRef = useRef(null)
   const seekLock = useRef(false)
   const tickRef = useRef(null)
   const volumePopupRef = useRef(null)
@@ -1523,6 +1548,18 @@ export default function RoomPage() {
           }
         }
       }, timerDelay)
+    }
+  }, [room?.currentTrack?.videoId])
+
+  // ─── Keep stable player videoId: set once on first track, reset when queue empties ───
+  // This prevents react-youtube from calling resetPlayer() (destroy+recreate) on every
+  // track change — which was causing the 8s mobile watchdog to fire on a brand-new
+  // UNSTARTED player and skip perfectly good songs prematurely.
+  useEffect(() => {
+    if (room?.currentTrack?.videoId) {
+      if (!ytStableVideoIdRef.current) ytStableVideoIdRef.current = room.currentTrack.videoId
+    } else {
+      ytStableVideoIdRef.current = null  // reset so next queue mount gets a fresh stable id
     }
   }, [room?.currentTrack?.videoId])
 
@@ -2607,7 +2644,7 @@ export default function RoomPage() {
     }>
       <YouTube
         ref={playerRef}
-        videoId={room.currentTrack.videoId}
+        videoId={ytStableVideoIdRef.current || room.currentTrack.videoId}
         opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, mute: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0 } }}
         onReady={handlePlayerReady}
         onStateChange={handleStateChange}
@@ -3227,7 +3264,7 @@ export default function RoomPage() {
       <GameInviteToast invite={wordchainInvite}  game="wordchain"  respondFn={respondToWordChainInvite}  currentUser={user} roomId={roomId} onAccept={() => { setDirectGame('wordchain');  setShowGames(true) }} onDecline={() => {}} />
 
       {/* 3-Column Layout */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `${videoFocus ? '0px' : leftCollapsed ? '48px' : '280px'} 1fr ${videoFocus ? '0px' : '300px'}`, overflow: 'hidden', position: 'relative', zIndex: 1, transition: 'grid-template-columns 0.3s ease' }}>
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `${videoFocus ? '0px' : leftCollapsed ? '48px' : '340px'} 1fr ${videoFocus ? '0px' : '300px'}`, overflow: 'hidden', position: 'relative', zIndex: 1, transition: 'grid-template-columns 0.3s ease' }}>
 
         {/* Left */}
         <div style={{ borderRight: videoFocus ? 'none' : '1px solid var(--border)', background: 'rgba(13,13,13,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, transition: 'all 0.3s ease', position: 'relative' }}>
