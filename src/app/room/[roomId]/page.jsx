@@ -996,7 +996,14 @@ export default function RoomPage() {
   const [focusLandscape, setFocusLandscape] = useState(true)
   const focusContainerRef = useRef(null)
   const [isMobile, setIsMobile] = useState(false)
-  const [volume, setVolume] = useState(100)
+  const [volume, setVolume] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('we-vibe-volume')
+      return saved !== null ? Number(saved) : 100
+    }
+    return 100
+  })
+  const volumeRef = useRef(volume)
   const [muted, setMuted] = useState(false)
   const [mobileTapped, setMobileTapped] = useState(false)
   const [mobileTab, setMobileTab] = useState('search')
@@ -1013,6 +1020,11 @@ export default function RoomPage() {
   const seekLock = useRef(false)
   const tickRef = useRef(null)
   const volumePopupRef = useRef(null)
+  // Keep volumeRef in sync whenever volume state changes
+  useEffect(() => {
+    volumeRef.current = volume
+    localStorage.setItem('we-vibe-volume', String(volume))
+  }, [volume])
   const lastUpdateRef = useRef(0)  // Track recent updates to prevent sync loops
   const prevTrackRef = useRef(null)
   const mobileSkipTimerRef = useRef(null)  // Detects "can't play on mobile browser" stuck state
@@ -1052,7 +1064,7 @@ export default function RoomPage() {
   const canFullControl = isHost || room?.participantsFullControl
 
   useEffect(() => {
-    if (!user) { router.replace('/auth/login'); return }
+    if (!user) { router.replace('/'); return }
     return subscribeToRoom(roomId, data => { setRoom(data); roomRef.current = data; setLoading(false) })
   }, [roomId, user])
 
@@ -1238,11 +1250,11 @@ export default function RoomPage() {
           // Unmute via API + postMessage — Chrome can silently mute after tab switch
           try {
             const p = ytPlayerRef.current
-            if (p) { p.unMute?.(); p.setVolume?.(100) }
+            if (p) { p.unMute?.(); p.setVolume?.(volumeRef.current) }
             const iframe = document.querySelector('iframe[src*="youtube"]')
             if (iframe?.contentWindow) {
               iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute',     args: [] }), '*')
-              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [100] }), '*')
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [volumeRef.current] }), '*')
             }
           } catch {}
           tryResume()
@@ -1460,7 +1472,7 @@ export default function RoomPage() {
       // Robust resume: unmute + play + iframe postMessage + retries
       // The tab may be hidden (PiP active) so a single playVideo() call is often blocked
       const doPlay = () => {
-        try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.setVolume?.(100); ytPlayerRef.current?.playVideo?.() } catch {}
+        try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.setVolume?.(volumeRef.current); ytPlayerRef.current?.playVideo?.() } catch {}
         try {
           const iframe = document.querySelector('iframe[src*="youtube"]')
           if (iframe?.contentWindow)
@@ -1956,7 +1968,7 @@ export default function RoomPage() {
         navigator.mediaSession.setActionHandler('play', () => {
           if (roomRef.current) roomRef.current = {...roomRef.current, isPlaying: true}
           navigator.mediaSession.playbackState = 'playing'
-          const tryPlay = () => { try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.setVolume?.(100); ytPlayerRef.current?.playVideo?.() } catch {} }
+          const tryPlay = () => { try { ytPlayerRef.current?.unMute?.(); ytPlayerRef.current?.setVolume?.(volumeRef.current); ytPlayerRef.current?.playVideo?.() } catch {} }
           tryPlay(); [300,700,1400].forEach(d => setTimeout(tryPlay, d))
           import('firebase/firestore').then(({updateDoc,doc})=>import('@/lib/firebase').then(({db})=>updateDoc(doc(db,'rooms',roomId),{isPlaying:true}).catch(()=>{})))
         })
@@ -2110,10 +2122,10 @@ export default function RoomPage() {
                   const loaded = p.getVideoData?.()?.video_id
                   if (loaded !== newId) {
                     p.loadVideoById({ videoId: newId, startSeconds: 0 })
-                    p.unMute?.(); p.setVolume?.(100)
+                    p.unMute?.(); p.setVolume?.(volumeRef.current)
                   } else {
                     const state = p.getPlayerState?.()
-                    p.unMute?.(); p.setVolume?.(100)
+                    p.unMute?.(); p.setVolume?.(volumeRef.current)
                     if (state !== 1) p.playVideo?.() // 1 = PLAYING
                   }
                   // Belt-and-suspenders: postMessage to iframe directly (never throttled)
@@ -2121,7 +2133,7 @@ export default function RoomPage() {
                     const iframe = document.querySelector('iframe[src*="youtube"]')
                     if (iframe?.contentWindow) {
                       iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute',    args: [] }), '*')
-                      iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [100] }), '*')
+                      iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [volumeRef.current] }), '*')
                       iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
                     }
                   } catch {}
@@ -2247,24 +2259,26 @@ export default function RoomPage() {
       const p = ytPlayerRef.current
       if (!p) return
       p.loadVideoById({ videoId, startSeconds })
-      p.unMute?.(); p.setVolume?.(volume)
+      p.unMute?.(); p.setVolume?.(volumeRef.current)
     } catch {}
-    if (!document.hidden) return
-    // Keep a reference so they all use the same videoId
+    // Always retry playVideo — loadVideoById can fail silently due to buffering
+    // or browser autoplay policy even on visible tabs
     const targetId = videoId
-    ;[400, 900, 1800, 3000].forEach(delay => {
+    ;[300, 800, 1600, 3000].forEach(delay => {
       setTimeout(() => {
         try {
           const p = ytPlayerRef.current
           if (!p || !roomRef.current?.isPlaying) return
           if (roomRef.current?.currentTrack?.videoId !== targetId) return
           const state = p.getPlayerState?.()
-          // Always unmute — Chrome can mute new video loads at browser level
-          p.unMute?.(); p.setVolume?.(100)
+          p.unMute?.(); p.setVolume?.(volumeRef.current)
           try {
             const iframe = document.querySelector('iframe[src*="youtube"]')
-            if (iframe?.contentWindow)
+            if (iframe?.contentWindow) {
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*')
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [volumeRef.current] }), '*')
               iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+            }
           } catch {}
           if (state !== 1) p.playVideo?.()
         } catch {}
@@ -2280,7 +2294,7 @@ export default function RoomPage() {
       const liveRoom = roomRef.current
       if (!liveRoom?.currentTrack?.videoId) return
       e.target.unMute()
-      e.target.setVolume(volume)
+      e.target.setVolume(volumeRef.current)
       if (liveRoom.isPlaying) loadAndPlay(liveRoom.currentTrack.videoId, liveRoom.currentTime || 0)
       else e.target.cueVideoById({ videoId: liveRoom.currentTrack.videoId, startSeconds: liveRoom.currentTime || 0 })
       if (liveRoom.isPlaying && isMobile) {

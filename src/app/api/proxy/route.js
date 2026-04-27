@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server'
 
+// Only allow proxying known video/media domains
+const ALLOWED_PROXY_HOSTS = new Set([
+  'www.youtube.com', 'youtube.com', 'youtu.be',
+  'www.dailymotion.com', 'dailymotion.com',
+  'player.vimeo.com', 'vimeo.com',
+  'www.twitch.tv', 'player.twitch.tv',
+])
+
 // Private/loopback IP ranges — block to prevent SSRF
 function isSafeUrl(raw) {
   try {
     const u = new URL(raw)
     if (!['http:', 'https:'].includes(u.protocol)) return false
     const h = u.hostname
+    if (!ALLOWED_PROXY_HOSTS.has(h)) return false
     if (
       h === 'localhost' ||
       /^127\./.test(h) ||

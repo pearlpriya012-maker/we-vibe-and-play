@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { updateProfile, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
+import { updateProfile, deleteUser } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
 import { useAuth } from '@/context/AuthContext'
@@ -28,11 +28,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleting, setDeleting] = useState(false)
-  const [reauthPassword, setReauthPassword] = useState('')
-  const [showReauth, setShowReauth] = useState(false)
 
   useEffect(() => {
-    if (!user) { router.replace('/auth/login'); return }
+    if (!user) { router.replace('/'); return }
     setDisplayName(user.displayName || '')
   }, [user])
 
@@ -70,12 +68,12 @@ export default function SettingsPage() {
 
   async function handleSaveName(e) {
     e.preventDefault()
-    if (!displayName.trim()) return toast.error('Display name cannot be empty')
+    if (!displayName.trim()) return toast.error('Username cannot be empty')
     setSaving(true)
     try {
       await updateProfile(auth.currentUser, { displayName: displayName.trim() })
-      await updateDoc(doc(db, 'users', user.uid), { displayName: displayName.trim() })
-      toast.success('Display name updated!')
+      await updateDoc(doc(db, 'users', user.uid), { displayName: displayName.trim(), username: displayName.trim() })
+      toast.success('Username updated!')
     } catch (err) {
       toast.error('Could not update name')
     } finally {
@@ -88,29 +86,14 @@ export default function SettingsPage() {
     setDeleting(true)
     try {
       await deleteUser(auth.currentUser)
+      localStorage.removeItem('we-vibe-mode')
+      sessionStorage.removeItem('we-vibe-mode')
       toast.success('Account deleted')
       router.push('/')
     } catch (err) {
-      if (err.code === 'auth/requires-recent-login') {
-        setShowReauth(true)
-        toast.error('Please re-authenticate to delete your account')
-      } else {
-        toast.error('Could not delete account')
-      }
+      toast.error('Could not delete account')
     } finally {
       setDeleting(false)
-    }
-  }
-
-  async function handleReauth(e) {
-    e.preventDefault()
-    try {
-      const cred = EmailAuthProvider.credential(user.email, reauthPassword)
-      await reauthenticateWithCredential(auth.currentUser, cred)
-      setShowReauth(false)
-      toast.success('Re-authenticated! Now try deleting again.')
-    } catch {
-      toast.error('Wrong password')
     }
   }
 
@@ -143,9 +126,8 @@ export default function SettingsPage() {
             <Avatar user={user} size={64} />
             <div>
               <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{user.displayName}</div>
-              <div style={{ color: 'var(--text-dim)', fontSize: '0.875rem', marginTop: 4 }}>{user.email}</div>
               <div className="badge badge-green" style={{ marginTop: 8, fontSize: '0.65rem' }}>
-                <span className="pulse-dot" style={{ width: 5, height: 5 }} /> Active
+                <span className="pulse-dot" style={{ width: 5, height: 5 }} /> {user.isRandomGuest ? 'Guest Session' : 'Active'}
               </div>
             </div>
           </div>
@@ -154,11 +136,6 @@ export default function SettingsPage() {
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'Oswald', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Display Name</label>
               <input type="text" className="input-vibe" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your vibe name" maxLength={50} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'Oswald', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Email</label>
-              <input type="email" className="input-vibe" value={user.email} readOnly style={{ opacity: 0.6, cursor: 'not-allowed' }} />
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: 6 }}>Email cannot be changed here</p>
             </div>
             <button type="submit" disabled={saving} className="btn-primary" style={{ alignSelf: 'flex-start', padding: '11px 24px' }}>
               {saving ? <span className="spinner" /> : 'Save Changes'}
@@ -187,29 +164,20 @@ export default function SettingsPage() {
         <div className="glass-card" style={{ padding: '32px 28px', border: '1px solid rgba(233,30,99,0.2)' }}>
           <div style={{ fontFamily: 'Oswald', fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--pink)', marginBottom: 16 }}>⚠️ Danger Zone</div>
           <p style={{ color: 'var(--text-dim)', fontSize: '0.875rem', marginBottom: 20, lineHeight: 1.6 }}>
-            Permanently delete your account and all associated data. This action cannot be undone.
+            {user.isRandomGuest
+              ? 'Your session will end when you close the browser. No data is permanently stored for guest sessions.'
+              : 'Permanently delete your account and all associated data. This action cannot be undone.'}
           </p>
 
-          {showReauth ? (
-            <form onSubmit={handleReauth} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>Enter your password to confirm identity:</p>
-              <input type="password" className="input-vibe" placeholder="Your password" value={reauthPassword} onChange={e => setReauthPassword(e.target.value)} />
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button type="submit" className="btn-danger" style={{ padding: '10px 20px' }}>Confirm Identity</button>
-                <button type="button" className="btn-ghost" onClick={() => setShowReauth(false)} style={{ padding: '10px 20px' }}>Cancel</button>
-              </div>
-            </form>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: 8 }}>Type <strong style={{ color: 'var(--pink)' }}>DELETE</strong> to confirm</label>
-                <input type="text" className="input-vibe" placeholder="DELETE" value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} style={{ borderColor: deleteConfirm === 'DELETE' ? 'var(--pink)' : undefined }} />
-              </div>
-              <button onClick={handleDelete} disabled={deleting || deleteConfirm !== 'DELETE'} className="btn-danger" style={{ alignSelf: 'flex-start', padding: '10px 20px' }}>
-                {deleting ? <span className="spinner" /> : 'Delete My Account'}
-              </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: 8 }}>Type <strong style={{ color: 'var(--pink)' }}>DELETE</strong> to confirm</label>
+              <input type="text" className="input-vibe" placeholder="DELETE" value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} style={{ borderColor: deleteConfirm === 'DELETE' ? 'var(--pink)' : undefined }} />
             </div>
-          )}
+            <button onClick={handleDelete} disabled={deleting || deleteConfirm !== 'DELETE'} className="btn-danger" style={{ alignSelf: 'flex-start', padding: '10px 20px' }}>
+              {deleting ? <span className="spinner" /> : (user.isRandomGuest ? 'End Session' : 'Delete My Account')}
+            </button>
+          </div>
         </div>
 
         <p style={{ marginTop: 40, color: 'var(--text-dim)', fontSize: '0.8rem', fontStyle: 'italic', textAlign: 'center' }}>

@@ -1,7 +1,10 @@
 'use client'
 // src/app/page.jsx  — Landing Page
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import toast from 'react-hot-toast'
+import { useAuth } from '@/context/AuthContext'
 
 // ─── Floating background shapes ───
 function Shapes() {
@@ -66,7 +69,7 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { num: '01', color: 'var(--green)',  title: 'Sign Up',        desc: 'Create your account with email or Google OAuth. Link your YouTube for playlists.' },
+  { num: '01', color: 'var(--green)',  title: 'Enter Your Name', desc: 'Type any name you like and jump straight in — or let us pick a random one for you instantly.' },
   { num: '02', color: 'var(--cyan)',   title: 'Create Room',    desc: 'Choose Music or Video mode. Hit Create and get your unique 6-digit room code.' },
   { num: '03', color: 'var(--purple)', title: 'Invite Friends', desc: 'Share the code. Friends enter it on their dashboard and they\'re in instantly.' },
   { num: '04', color: 'var(--pink)',   title: 'Vibe Together',  desc: 'Search tracks, build a queue, let AI suggest bangers. Chat and vibe in real-time.' },
@@ -74,6 +77,42 @@ const STEPS = [
 
 export default function LandingPage() {
   useScrollReveal()
+  const { user, loginWithName, loginWithRandomName } = useAuth()
+  const router = useRouter()
+  const [name, setName] = useState('')
+  const [entering, setEntering] = useState(false)
+
+  useEffect(() => {
+    if (user) router.replace('/dashboard')
+  }, [user])
+
+  async function handleEnterWithName(e) {
+    e.preventDefault()
+    const trimmed = name.trim()
+    if (!trimmed) return toast.error('Enter a name first!')
+    if (trimmed.length < 2) return toast.error('Name must be at least 2 characters')
+    setEntering(true)
+    try {
+      await loginWithName(trimmed)
+      router.push('/dashboard')
+    } catch (err) {
+      toast.error('Something went wrong, try again')
+    } finally {
+      setEntering(false)
+    }
+  }
+
+  async function handleRandom() {
+    setEntering(true)
+    try {
+      await loginWithRandomName()
+      router.push('/dashboard')
+    } catch (err) {
+      toast.error('Something went wrong, try again')
+    } finally {
+      setEntering(false)
+    }
+  }
 
   return (
     <>
@@ -96,8 +135,6 @@ export default function LandingPage() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <Link href="#features" className="btn-ghost" style={{ padding: '9px 18px', fontSize: '0.85rem' }}>Features</Link>
           <Link href="#how" className="btn-ghost" style={{ padding: '9px 18px', fontSize: '0.85rem' }}>How It Works</Link>
-          <Link href="/auth/login" className="btn-ghost" style={{ padding: '9px 18px', fontSize: '0.85rem' }}>Log In</Link>
-          <Link href="/auth/signup" className="btn-primary" style={{ padding: '10px 22px', fontSize: '0.85rem' }}>Start Vibing 🚀</Link>
         </div>
       </nav>
 
@@ -132,19 +169,29 @@ export default function LandingPage() {
             Watch. Listen. Vibe together — in perfect sync.
           </p>
 
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center', animation: 'fadeUp 0.7s ease 0.3s both' }}>
-            <Link href="/auth/signup" className="btn-primary" style={{ padding: '15px 36px', fontSize: '1rem' }}>
-              Start Vibing 🚀
-            </Link>
-            <Link href="/auth/login" style={{
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text)',
-              padding: '15px 36px', borderRadius: 8, fontFamily: 'Work Sans', fontSize: '1rem',
-              fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', textDecoration: 'none',
-              display: 'inline-flex', alignItems: 'center',
-            }}>
-              Log In
-            </Link>
-          </div>
+          <form onSubmit={handleEnterWithName} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%', maxWidth: 400, animation: 'fadeUp 0.7s ease 0.3s both' }}>
+            <input
+              type="text"
+              className="input-vibe"
+              placeholder="Enter your name..."
+              value={name}
+              onChange={e => setName(e.target.value)}
+              maxLength={30}
+              style={{ width: '100%', textAlign: 'center', fontSize: '1rem', padding: '14px 20px' }}
+            />
+            <div style={{ display: 'flex', gap: 12, width: '100%' }}>
+              <button type="submit" disabled={entering} className="btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '14px', fontSize: '0.95rem' }}>
+                {entering ? <span className="spinner" /> : "Let's Go 🚀"}
+              </button>
+              <button type="button" disabled={entering} onClick={handleRandom} style={{
+                flex: 1, background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-dim)',
+                padding: '14px', borderRadius: 8, fontFamily: 'Work Sans', fontSize: '0.95rem',
+                fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
+              }}>
+                🎲 Random Name
+              </button>
+            </div>
+          </form>
 
           <div style={{ display: 'flex', gap: 48, marginTop: 80, animation: 'fadeUp 0.7s ease 0.4s both' }}>
             {[

@@ -32,8 +32,8 @@ export async function GET(request) {
 
     // Store tokens in a cookie temporarily — client will pick up and save to Firestore
     const response = NextResponse.redirect(`${APP_URL}/settings?yt=success`)
-    response.cookies.set('yt_access_token', tokens.access_token, { httpOnly: false, maxAge: 60 })
-    response.cookies.set('yt_refresh_token', tokens.refresh_token || '', { httpOnly: false, maxAge: 60 })
+    response.cookies.set('yt_access_token', tokens.access_token, { httpOnly: false, maxAge: 60, secure: true, sameSite: 'strict' })
+    response.cookies.set('yt_refresh_token', tokens.refresh_token || '', { httpOnly: false, maxAge: 60, secure: true, sameSite: 'strict' })
 
     return response
   } catch (err) {
