@@ -28,6 +28,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false)
+  const [savingPhoto, setSavingPhoto] = useState(false)
+  const [avatarTab, setAvatarTab] = useState('ai')
 
   useEffect(() => {
     if (!user) { router.replace('/'); return }
@@ -97,6 +100,66 @@ export default function SettingsPage() {
     }
   }
 
+  const AI_STYLES = [
+    { id: 'adventurer',   label: '🧝 Explorer' },
+    { id: 'big-smile',    label: '😊 Happy' },
+    { id: 'bottts',       label: '🤖 Robot' },
+    { id: 'croodles',     label: '✏️ Doodle' },
+    { id: 'fun-emoji',    label: '😎 Emoji' },
+    { id: 'pixel-art',    label: '🎮 Pixel' },
+    { id: 'lorelei',      label: '🌸 Lorelei' },
+    { id: 'thumbs',       label: '👍 Thumbs' },
+  ]
+
+  async function handleSelectAiAvatar(style) {
+    setSavingPhoto(true)
+    const url = `https://api.dicebear.com/9.x/${style}/png?seed=${encodeURIComponent(user.displayName || 'vibe')}&size=150`
+    try {
+      await updateProfile(auth.currentUser, { photoURL: url })
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: url })
+      toast.success('Avatar updated! ✨')
+      setShowAvatarPicker(false)
+    } catch {
+      toast.error('Could not update avatar')
+    } finally {
+      setSavingPhoto(false)
+    }
+  }
+
+  function handleFileUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) return toast.error('Please select an image file')
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = async () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = 150
+        canvas.height = 150
+        const ctx = canvas.getContext('2d')
+        const size = Math.min(img.width, img.height)
+        const sx = (img.width - size) / 2
+        const sy = (img.height - size) / 2
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, 150, 150)
+        const dataURL = canvas.toDataURL('image/jpeg', 0.85)
+        setSavingPhoto(true)
+        try {
+          await updateProfile(auth.currentUser, { photoURL: dataURL })
+          await updateDoc(doc(db, 'users', user.uid), { photoURL: dataURL })
+          toast.success('Photo updated! 📸')
+          setShowAvatarPicker(false)
+        } catch {
+          toast.error('Could not update photo')
+        } finally {
+          setSavingPhoto(false)
+        }
+      }
+      img.src = ev.target.result
+    }
+    reader.readAsDataURL(file)
+  }
+
   return (
     <div style={{ minHeight: '100vh', position: 'relative' }}>
       <div className="grid-bg" />
@@ -123,14 +186,78 @@ export default function SettingsPage() {
           <div style={{ fontFamily: 'Oswald', fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 24 }}>Profile</div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 28 }}>
-            <Avatar user={user} size={64} />
+            <div style={{ position: 'relative', cursor: 'pointer', flexShrink: 0 }} onClick={() => setShowAvatarPicker(v => !v)}>
+              <Avatar user={user} size={64} />
+              <div style={{
+                position: 'absolute', inset: 0, borderRadius: '50%',
+                background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s',
+              }}
+                onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                onMouseLeave={e => e.currentTarget.style.opacity = 0}
+              >
+                <span style={{ fontSize: '1.3rem' }}>📷</span>
+              </div>
+            </div>
             <div>
               <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{user.displayName}</div>
+              <button onClick={() => setShowAvatarPicker(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--green)', fontSize: '0.78rem', cursor: 'pointer', padding: 0, marginTop: 4 }}>
+                Change picture
+              </button>
               <div className="badge badge-green" style={{ marginTop: 8, fontSize: '0.65rem' }}>
                 <span className="pulse-dot" style={{ width: 5, height: 5 }} /> {user.isRandomGuest ? 'Guest Session' : 'Active'}
               </div>
             </div>
           </div>
+
+          {showAvatarPicker && (
+            <div style={{ marginBottom: 24, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
+                {[['ai', '🤖 AI Avatars'], ['upload', '📁 Upload Photo']].map(([id, label]) => (
+                  <button key={id} onClick={() => setAvatarTab(id)} style={{
+                    flex: 1, padding: '12px', background: avatarTab === id ? 'rgba(0,255,136,0.08)' : 'transparent',
+                    border: 'none', borderBottom: avatarTab === id ? '2px solid var(--green)' : '2px solid transparent',
+                    color: avatarTab === id ? 'var(--green)' : 'var(--text-dim)', cursor: 'pointer',
+                    fontSize: '0.85rem', fontFamily: 'Work Sans', fontWeight: 500, transition: 'all 0.2s',
+                  }}>{label}</button>
+                ))}
+              </div>
+
+              {avatarTab === 'ai' && (
+                <div style={{ padding: 20 }}>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: 16 }}>Generated from your name — click any to use it</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                    {AI_STYLES.map(({ id, label }) => (
+                      <button key={id} onClick={() => handleSelectAiAvatar(id)} disabled={savingPhoto}
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 8px', cursor: 'pointer', transition: 'border-color 0.2s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--green)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                      >
+                        <img
+                          src={`https://api.dicebear.com/9.x/${id}/png?seed=${encodeURIComponent(user.displayName || 'vibe')}&size=80`}
+                          alt={label}
+                          style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
+                        />
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {avatarTab === 'upload' && (
+                <div style={{ padding: 28, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '0.875rem', textAlign: 'center' }}>
+                    Upload from your device — auto-cropped to a square.
+                  </p>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--green)', color: '#000', padding: '11px 24px', borderRadius: 8, fontFamily: 'Work Sans', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}>
+                    {savingPhoto ? <span className="spinner" style={{ borderTopColor: '#000', borderColor: 'rgba(0,0,0,0.2)' }} /> : '📁 Choose Photo'}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileUpload} />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleSaveName} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>

@@ -410,7 +410,7 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
       {/* Sub-tabs: Search | Queue | Playlist | AI Bond — hidden on mobile (outer tabs handle this) */}
       {!hideTabs && (
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {[['search', '🔍 Search'], ['queue', '🎵 Queue'], ['playlists', '📋 Playlist'], ['aibond', '🐻‍❄️ AI Bond']].map(([id, label]) => (
+        {[['search', '🔍 Search'], ['queue', '🎵 Queue'], ['playlists', '📋 Playlist']].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{ flex: 1, minWidth: 'max-content', padding: '10px 10px', background: 'transparent', border: 'none', borderBottom: `2px solid ${tab === id ? 'var(--green)' : 'transparent'}`, color: tab === id ? 'var(--green)' : 'var(--text-dim)', fontFamily: 'Oswald', fontSize: '0.62rem', letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.2s', marginBottom: -1, whiteSpace: 'nowrap' }}>
             {label}
           </button>
@@ -717,6 +717,8 @@ function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
   const [recs, setRecs] = useState([])
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
+  const [refreshCount, setRefreshCount] = useState(0)
+  const seenTitlesRef = useRef(new Set())
 
   useEffect(() => {
     const p = localStorage.getItem('aibond_provider') || ''
@@ -758,15 +760,45 @@ function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
         queueTitles: (room?.queue || []).slice(0, 5).map(t => t.title),
         participantCount: room?.participants?.length || 1,
         playlistContext,
+        seenTitles: [...seenTitlesRef.current].slice(-40),
+        refreshSeed: refreshCount,
       }
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json()
       if (data.error) { toast.error('AI error: ' + String(data.error).slice(0, 120)); return }
-      setRecs(data.recommendations || []); setFetched(true)
+      const freshRecs = data.recommendations || []
+      freshRecs.forEach(r => seenTitlesRef.current.add(r.title))
+      setRecs(freshRecs); setFetched(true); setRefreshCount(c => c + 1)
+      enrichWithThumbnails(freshRecs)
     } catch (e) { toast.error('Failed: ' + e.message) } finally { setLoading(false) }
   }
 
+  async function enrichWithThumbnails(rawRecs) {
+    const results = await Promise.allSettled(
+      rawRecs.slice(0, 6).map(async (rec) => {
+        try {
+          const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(rec.title + ' ' + rec.artist)}&limit=1`)
+          const data = await res.json()
+          return data.results?.[0] || null
+        } catch { return null }
+      })
+    )
+    setRecs(prev => {
+      const updated = [...prev]
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value) {
+          updated[i] = { ...updated[i], thumbnail: r.value.thumbnail, videoId: r.value.videoId, channelTitle: r.value.channelTitle }
+        }
+      })
+      return updated
+    })
+  }
+
   async function handleAdd(rec) {
+    if (rec.videoId) {
+      await onAddToQueue({ videoId: rec.videoId, title: rec.title, channelTitle: rec.channelTitle || rec.artist, thumbnail: rec.thumbnail })
+      return
+    }
     try {
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(rec.title + ' ' + rec.artist)}&limit=1`)
       const data = await res.json()
@@ -894,9 +926,10 @@ function AIBondPanel({ room, canAdd, onAddToQueue, ytAccessToken }) {
               {recs.map((rec, i) => (
                 <div key={i} style={{ padding: '12px 14px', background: 'var(--glass)', border: '1px solid var(--border)', borderRadius: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: '0.85rem', marginBottom: 2 }}>{rec.title}</div>
-                      <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{rec.artist}</div>
+                    {rec.thumbnail && <img src={rec.thumbnail} alt="" style={{ width: 56, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0, alignSelf: 'center' }} />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: '0.85rem', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rec.title}</div>
+                      <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rec.channelTitle || rec.artist}</div>
                     </div>
                     <AddButton canAdd={canAdd} onAdd={() => handleAdd(rec)} />
                   </div>
@@ -2740,7 +2773,7 @@ export default function RoomPage() {
           </div>
           {canControl ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: compact ? 12 : 16, justifyContent: 'center' }}>
-              {canFullControl && (
+              {canControl && (
                 <button onClick={handlePreviousTrack} style={{ width: compact ? 36 : 40, height: compact ? 36 : 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>⏮</button>
               )}
               <button onClick={handlePlayPause} style={{ width: compact ? 46 : 52, height: compact ? 46 : 52, borderRadius: '50%', background: 'var(--green)', border: 'none', cursor: 'pointer', fontSize: compact ? '1rem' : '1.2rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(0,255,136,0.4)', transition: 'transform 0.15s' }}>{room.isPlaying ? '⏸' : '▶'}</button>
@@ -2860,7 +2893,7 @@ export default function RoomPage() {
           <div style={{ flexShrink: 0, display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(13,13,13,0.97)', overflowX: 'auto', scrollbarWidth: 'none', position: musicMode ? 'static' : 'sticky', top: 0, zIndex: musicMode ? 'auto' : 5, backdropFilter: 'blur(12px)' }}>
             <style>{`#mob-tabs::-webkit-scrollbar{display:none}`}</style>
             <div id="mob-tabs" style={{ display: 'flex', width: '100%' }}>
-              {[['search','🔍','Search'],['queue','🎵','Queue'],['playlists','📋','Playlist'],['aibond','🐻‍❄️','AI Bond'],['chat','💬','Chat'],['lyrics','📝','Lyrics']].map(([id, icon, label]) => {
+              {[['search','🔍','Search'],['queue','🎵','Queue'],['playlists','📋','Playlist'],['chat','💬','Chat'],['ai','🐻‍❄️','AI Bond'],['lyrics','📝','Lyrics']].map(([id, icon, label]) => {
                 const unread = id === 'chat' && floatMsg
                 return (
                   <button key={id} onClick={() => setMobileTab(id)}
@@ -2879,7 +2912,7 @@ export default function RoomPage() {
             <div style={{ display: mobileTab === 'search' || mobileTab === 'queue' || mobileTab === 'playlists' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <SearchAndQueue room={room} isHost={canFullControl} canAdd={canAdd} onAddToQueue={handleAddToQueue} onPlayNow={handlePlayNow} onRemove={i => canFullControl && removeFromQueue(roomId, i)} ytAccessToken={ytToken} initialTab={mobileTab === 'playlists' ? 'playlists' : mobileTab === 'queue' ? 'queue' : 'search'} hideTabs={true} roomId={roomId} playedHistory={room.playedHistory || []} onStartPlaylist={handleStartPlaylist} onShufflePlaylist={handleShufflePlaylist} onTokenExpired={refreshYtToken} />
             </div>
-            <div style={{ display: mobileTab === 'aibond' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <div style={{ display: mobileTab === 'ai' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <AIBondPanel room={room} canAdd={canAdd} onAddToQueue={handleAddToQueue} ytAccessToken={ytToken} />
             </div>
             <div style={{ display: mobileTab === 'chat' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -3350,7 +3383,7 @@ export default function RoomPage() {
                   {/* Playback controls overlay — only inside fullscreen so ⏭ works in focus mode */}
                   {videoFocus && canControl && (
                     <div style={{ position: 'absolute', bottom: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 10, display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 40, padding: '8px 20px' }}>
-                      {canFullControl && (
+                      {canControl && (
                         <button onClick={handlePreviousTrack} style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⏮</button>
                       )}
                       <button onClick={handlePlayPause} style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--green)', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(0,255,136,0.5)' }}>{room.isPlaying ? '⏸' : '▶'}</button>
@@ -3379,7 +3412,7 @@ export default function RoomPage() {
                   {canControl ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center', marginBottom: 12, flexShrink: 0 }}>
                       <button style={{ background: 'none', border: 'none', cursor: 'default', fontSize: '1rem', color: 'rgba(255,255,255,0.25)', padding: 2, lineHeight: 1 }}>♥</button>
-                      {canFullControl && (
+                      {canControl && (
                         <button onClick={handlePreviousTrack} style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
                           onMouseEnter={e => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#f97316' }}
                           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
@@ -3420,7 +3453,7 @@ export default function RoomPage() {
                   </div>
                   {canControl ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'center' }}>
-                      {canFullControl && (
+                      {canControl && (
                         <button onClick={handlePreviousTrack} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--glass)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
                           onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)' }}
                           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-dim)' }}
