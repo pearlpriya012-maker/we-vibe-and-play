@@ -1017,6 +1017,7 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [showGames, setShowGames] = useState(false)
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
   const [unoInvite, setUnoInvite] = useState(null)
   const [pictionaryInvite, setPictionaryInvite] = useState(null)
   const [wordchainInvite, setWordchainInvite] = useState(null)
@@ -1199,10 +1200,12 @@ export default function RoomPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // ─── Close volume popup on outside click ───
+  // ─── Close volume popup / header menu on outside click ───
+  const headerMenuRef = useRef(null)
   useEffect(() => {
     function handleClick(e) {
       if (volumePopupRef.current && !volumePopupRef.current.contains(e.target)) setShowVolume(false)
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) setShowHeaderMenu(false)
     }
     document.addEventListener('mousedown', handleClick)
     document.addEventListener('touchstart', handleClick)
@@ -2814,29 +2817,74 @@ export default function RoomPage() {
         <div className="grid-bg" />
 
         {/* Mobile Header */}
-        <header style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', backdropFilter: 'blur(20px)', background: 'rgba(13,13,13,0.95)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <header style={{ position: 'relative', zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', backdropFilter: 'blur(20px)', background: 'rgba(13,13,13,0.95)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Link href="/dashboard" style={{ fontFamily: 'Oswald', fontSize: '1.1rem', fontWeight: 700, color: 'var(--green)', textDecoration: 'none', textShadow: '0 0 12px rgba(0,255,136,0.4)' }}>WE🕊️</Link>
             <div style={{ fontFamily: 'Oswald', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-dim)' }}>{room.mode === 'music' ? '🎵' : '📺'} {room.name || 'ROOM'}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={async () => { 
-              const newMode = !musicMode
-              setMusicMode(newMode)
-              await updateMusicMode(roomId, newMode)
-            }} style={{ width: 32, height: 32, borderRadius: 8, background: musicMode ? 'rgba(0,255,136,0.08)' : 'rgba(52,152,219,0.08)', border: `1px solid ${musicMode ? 'rgba(0,255,136,0.3)' : 'rgba(52,152,219,0.3)'}`, cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {musicMode ? '🎵' : '📺'}
-            </button>
-            <button onClick={copyCode} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'Oswald', letterSpacing: '0.1em', color: 'var(--green)', fontSize: '0.75rem' }}>
-              {copied ? '✅' : '📋'} {room.roomCode}
-            </button>
-            <button onClick={copyLink} title="Copy invite link" style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{copiedLink ? '✅' : '🔗'}</button>
-            <button onClick={() => setShowGames(true)} title="Games" style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🎮</button>
+            {/* Participants badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', borderRadius: 8, padding: '4px 8px' }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 6px var(--green)', display: 'inline-block' }} />
               <span style={{ fontFamily: 'Oswald', fontSize: '0.7rem', color: 'var(--green)' }}>{room.participants?.length || 0}</span>
             </div>
-            <button onClick={handleLeave} style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(233,30,99,0.1)', border: '1px solid rgba(233,30,99,0.3)', color: 'var(--pink)', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            {/* 3-dots menu */}
+            <div ref={headerMenuRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowHeaderMenu(v => !v)}
+                style={{ width: 32, height: 32, borderRadius: 8, background: showHeaderMenu ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '1.1rem', color: 'var(--text-dim)', letterSpacing: '0.05em' }}
+                aria-label="More options"
+              >🤍</button>
+              {showHeaderMenu && (
+                <div
+                  style={{ position: 'absolute', top: '110%', right: 0, background: 'rgba(18,18,18,0.98)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '6px 0', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.8)', minWidth: 200, backdropFilter: 'blur(16px)' }}
+                  onClick={() => setShowHeaderMenu(false)}
+                >
+                  {/* Mode toggle */}
+                  <button
+                    onClick={async e => { e.stopPropagation(); const m = !musicMode; setMusicMode(m); await updateMusicMode(roomId, m); setShowHeaderMenu(false) }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)', textAlign: 'left' }}
+                  >
+                    <span style={{ fontSize: '1.1rem' }}>{musicMode ? '📺' : '🎵'}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.07em' }}>Switch to {musicMode ? 'Watch Mode' : 'Music Mode'}</span>
+                  </button>
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '2px 0' }} />
+                  {/* Copy room code */}
+                  <button
+                    onClick={e => { e.stopPropagation(); copyCode(); setShowHeaderMenu(false) }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--green)', textAlign: 'left' }}
+                  >
+                    <span style={{ fontSize: '1.1rem' }}>{copied ? '✅' : '📋'}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.07em' }}>Copy Code · {room.roomCode}</span>
+                  </button>
+                  {/* Copy invite link */}
+                  <button
+                    onClick={e => { e.stopPropagation(); copyLink(); setShowHeaderMenu(false) }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)', textAlign: 'left' }}
+                  >
+                    <span style={{ fontSize: '1.1rem' }}>{copiedLink ? '✅' : '🔗'}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.07em' }}>Copy Invite Link</span>
+                  </button>
+                  {/* Games */}
+                  <button
+                    onClick={e => { e.stopPropagation(); setShowGames(true); setShowHeaderMenu(false) }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)', textAlign: 'left' }}
+                  >
+                    <span style={{ fontSize: '1.1rem' }}>🎮</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.07em' }}>Games</span>
+                  </button>
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '2px 0' }} />
+                  {/* Leave room */}
+                  <button
+                    onClick={e => { e.stopPropagation(); handleLeave(); setShowHeaderMenu(false) }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--pink)', textAlign: 'left' }}
+                  >
+                    <span style={{ fontSize: '1.1rem' }}>✕</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.07em' }}>Leave Room</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
