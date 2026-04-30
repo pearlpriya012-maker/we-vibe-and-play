@@ -18,6 +18,7 @@ import GameInviteToast from '@/components/games/GameInviteToast'
 import { subscribeUnoInvite, respondToInvite as respondToUnoInvite } from '@/lib/unoFirestore'
 import { subscribePictionaryInvite, respondToPictionaryInvite } from '@/lib/pictionaryFirestore'
 import { subscribeWordChainInvite, respondToWordChainInvite } from '@/lib/wordChainFirestore'
+import { createScreenSession, sendSignal as sendScreenSignal, listenSignals as listenScreenSignals, endScreenSession } from '@/lib/screenshare'
 
 function Avatar({ user, size = 32 }) {
   if (user?.photoURL) return <img src={user.photoURL} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)', flexShrink: 0 }} />
@@ -1089,6 +1090,15 @@ export default function RoomPage() {
   const [watchCrop, setWatchCrop] = useState(false)
   const [watchQuality, setWatchQuality] = useState('auto') // YouTube playback quality
   const [ytToken, setYtToken] = useState(user?.youtubeAccessToken || null)
+  const [screenStatus, setScreenStatus] = useState('idle') // 'idle' | 'sharing'
+  const [screenCode, setScreenCode] = useState('')
+  const screenStreamRef = useRef(null)
+  const screenSessionIdRef = useRef(null)
+  const screenPcsRef = useRef({})
+  const screenDCsRef = useRef({})
+  const screenViewerCandidatesRef = useRef({})
+  const screenViewerNamesRef = useRef({})
+  const unsubScreenSignalsRef = useRef(null)
   const [lyrics, setLyrics] = useState({ lines: [], plain: null, synced: false, loading: false })
   lyricsRef.current = lyrics // keep ref fresh for canvas drawFrame (avoids stale closure)
 
@@ -1245,6 +1255,15 @@ export default function RoomPage() {
       } catch {}
     }, 500)
     return () => { clearInterval(tickRef.current); clearTimeout(mobileSkipTimerRef.current); clearTimeout(pauseDebounceRef.current) }
+  }, [])
+
+  // ─── Screenshare cleanup on unmount ───
+  useEffect(() => {
+    return () => {
+      screenStreamRef.current?.getTracks().forEach(t => t.stop())
+      unsubScreenSignalsRef.current?.()
+      Object.values(screenPcsRef.current).forEach(pc => { try { pc.close() } catch {} })
+    }
   }, [])
 
   // ─── Visibility change: keep playing in background, resume on return ───
@@ -2807,6 +2826,70 @@ export default function RoomPage() {
     )
   }
 
+  // ─── Mobile Screenshare ───
+  const SCREEN_ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] }
+
+  async function startRoomSharing() {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      toast.error('Screen share not supported on this browser. Use Chrome on Android.')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'window', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 48000, channelCount: 2 },
+      })
+      const session = await createScreenSession(user.uid, user.displayName)
+      screenStreamRef.current = stream
+      screenSessionIdRef.current = session.id
+      setScreenCode(session.code)
+      setScreenStatus('sharing')
+      stream.getVideoTracks()[0].addEventListener('ended', () => stopRoomSharing())
+      // Auto-post share link to room chat
+      const shareUrl = `${window.location.origin}/screenshare/${session.code}`
+      await sendMessage(roomId, { uid: user.uid, displayName: user.displayName, text: `📲 Screen share started! Join: ${shareUrl}` })
+      // WebRTC signaling
+      unsubScreenSignalsRef.current = listenScreenSignals(session.id, 'host', async (msg) => {
+        const vId = msg.from
+        if (msg.type === 'join') {
+          const pc = new RTCPeerConnection(SCREEN_ICE)
+          screenPcsRef.current[vId] = pc
+          screenViewerNamesRef.current[vId] = msg.data?.name || 'Viewer'
+          stream.getTracks().forEach(track => pc.addTrack(track, stream))
+          pc.onicecandidate = (e) => { if (e.candidate) sendScreenSignal(session.id, 'host', vId, 'ice', e.candidate) }
+          pc.createDataChannel('interaction', { ordered: false, maxRetransmits: 0 })
+          const offer = await pc.createOffer()
+          await pc.setLocalDescription(offer)
+          await sendScreenSignal(session.id, 'host', vId, 'offer', offer)
+        } else if (msg.type === 'answer') {
+          const pc = screenPcsRef.current[vId]
+          if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.data))
+            for (const c of (screenViewerCandidatesRef.current[vId] || [])) { try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {} }
+            delete screenViewerCandidatesRef.current[vId]
+          }
+        } else if (msg.type === 'ice') {
+          const pc = screenPcsRef.current[vId]
+          if (pc?.remoteDescription) { try { await pc.addIceCandidate(new RTCIceCandidate(msg.data)) } catch {} }
+          else { (screenViewerCandidatesRef.current[vId] = screenViewerCandidatesRef.current[vId] || []).push(msg.data) }
+        }
+      })
+      toast.success('Sharing started! Code: ' + session.code)
+    } catch (err) {
+      if (err.name !== 'NotAllowedError') toast.error('Screen share failed: ' + (err.message || err.name))
+    }
+  }
+
+  async function stopRoomSharing() {
+    screenStreamRef.current?.getTracks().forEach(t => t.stop())
+    if (screenSessionIdRef.current) { try { await endScreenSession(screenSessionIdRef.current) } catch {} }
+    Object.values(screenPcsRef.current).forEach(pc => { try { pc.close() } catch {} })
+    screenPcsRef.current = {}; screenDCsRef.current = {}; screenViewerCandidatesRef.current = {}; screenViewerNamesRef.current = {}
+    unsubScreenSignalsRef.current?.(); unsubScreenSignalsRef.current = null
+    screenStreamRef.current = null; screenSessionIdRef.current = null
+    setScreenStatus('idle'); setScreenCode('')
+  }
+
   if (isMobile && !room.watchUrl) {
     const MOBILE_TABS = [
       { id: 'player', icon: musicMode ? '🎵' : '📺', label: 'Player' },
@@ -2826,6 +2909,13 @@ export default function RoomPage() {
             <div style={{ fontFamily: 'Oswald', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-dim)' }}>{room.mode === 'music' ? '🎵' : '📺'} {room.name || 'ROOM'}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* LIVE screenshare badge */}
+            {screenStatus === 'sharing' && (
+              <div onClick={stopRoomSharing} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(233,30,99,0.15)', border: '1px solid rgba(233,30,99,0.5)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--pink)', boxShadow: '0 0 6px var(--pink)', display: 'inline-block', animation: 'pulse 1s infinite' }} />
+                <span style={{ fontFamily: 'Oswald', fontSize: '0.65rem', color: 'var(--pink)', letterSpacing: '0.08em' }}>LIVE · {screenCode}</span>
+              </div>
+            )}
             {/* Participants badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)', borderRadius: 8, padding: '4px 8px' }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 6px var(--green)', display: 'inline-block' }} />
@@ -2875,6 +2965,14 @@ export default function RoomPage() {
                   >
                     <span style={{ fontSize: '1.1rem' }}>🎮</span>
                     <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.07em' }}>Games</span>
+                  </button>
+                  {/* Screen share */}
+                  <button
+                    onClick={e => { e.stopPropagation(); setShowHeaderMenu(false); screenStatus === 'sharing' ? stopRoomSharing() : startRoomSharing() }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', background: screenStatus === 'sharing' ? 'rgba(233,30,99,0.08)' : 'transparent', border: 'none', cursor: 'pointer', color: screenStatus === 'sharing' ? 'var(--pink)' : 'var(--text)', textAlign: 'left' }}
+                  >
+                    <span style={{ fontSize: '1.1rem' }}>{screenStatus === 'sharing' ? '⏹' : '📲'}</span>
+                    <span style={{ fontFamily: 'Oswald', fontSize: '0.8rem', letterSpacing: '0.07em' }}>{screenStatus === 'sharing' ? `Stop Sharing · ${screenCode}` : 'Share Screen'}</span>
                   </button>
                   <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '2px 0' }} />
                   {/* Leave room */}
