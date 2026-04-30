@@ -555,10 +555,10 @@ function SearchAndQueue({ room, isHost, canAdd, onAddToQueue, onPlayNow, onRemov
       ) : (
         <>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ position: 'relative' }}>
-              <input type="search" value={query} onChange={e => handleSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && runYouTubeSearch(query)} placeholder="Search songs, artists… ↵" className="input-vibe" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} style={{ fontSize: '0.85rem', padding: '10px 36px 10px 12px' }} />
-              <button onClick={() => runYouTubeSearch(query)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: searching ? 'var(--green)' : 'var(--text-dim)', fontSize: '1rem', padding: 2 }}>{searching ? '⏳' : '🔍'}</button>
-            </div>
+            <form onSubmit={e => { e.preventDefault(); runYouTubeSearch(query) }} style={{ position: 'relative' }}>
+              <input type="search" value={query} onChange={e => handleSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && runYouTubeSearch(query)} onSearch={e => runYouTubeSearch(e.target.value)} placeholder="Search… then tap 🔍" className="input-vibe" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} style={{ fontSize: '0.85rem', padding: '10px 36px 10px 12px' }} />
+              <button type="submit" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: searching ? 'var(--green)' : 'var(--text-dim)', fontSize: '1rem', padding: 2 }}>{searching ? '⏳' : '🔍'}</button>
+            </form>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
