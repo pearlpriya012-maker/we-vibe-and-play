@@ -52,6 +52,36 @@ async function resolveWatchUrl(raw) {
   return null
 }
 
+// Detect actual HLS stream URLs — must be a .m3u8 playlist file
+function isHlsUrl(url) {
+  if (!url) return false
+  return /\.m3u8(\?|$)/i.test(url)
+}
+
+function HlsPlayer({ src, style }) {
+  const videoRef = useRef(null)
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !src) return
+    let hls
+    const load = async () => {
+      const Hls = (await import('hls.js')).default
+      if (Hls.isSupported()) {
+        hls = new Hls({ enableWorker: true })
+        hls.loadSource(src)
+        hls.attachMedia(video)
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}) })
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = src
+        video.play().catch(() => {})
+      }
+    }
+    load()
+    return () => { hls?.destroy() }
+  }, [src])
+  return <video ref={videoRef} controls autoPlay playsInline style={style} />
+}
+
 function Avatar({ user, size = 32 }) {
   if (user?.photoURL) return <img src={user.photoURL} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)', flexShrink: 0 }} />
   return (
@@ -3218,7 +3248,8 @@ export default function RoomPage() {
     const isYt = /youtube\.com\/embed/.test(room.watchUrl)
     const isDm = /dailymotion\.com\/embed/.test(room.watchUrl)
     const isBili = /player\.bilibili\.com/.test(room.watchUrl)
-    const isKnownPlatform = isYt || isDm || isBili || /player\.vimeo\.com/.test(room.watchUrl)
+    const isHls = isHlsUrl(room.watchUrl)
+    const isKnownPlatform = isYt || isDm || isBili || /player\.vimeo\.com/.test(room.watchUrl) || isHls
     const fmtTime = s => { const m = Math.floor(s/60); const sec = Math.floor(s%60); return `${m}:${sec.toString().padStart(2,'0')}` }
     return (
       <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#000', position: 'relative' }}>
@@ -3282,7 +3313,13 @@ export default function RoomPage() {
 
         {/* Video */}
         <div style={{ flexShrink: 0, width: '100%', paddingTop: '56.25%', position: 'relative', background: '#000', overflow: 'hidden', borderRadius: 14 }}>
-          {isYt ? (
+          {isHls ? (
+            <HlsPlayer
+              key={room.watchUrl}
+              src={room.watchUrl}
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: '#000' }}
+            />
+          ) : isYt ? (
             <YouTube
               key={room.watchUrl}
               videoId={room.watchUrl.match(/embed\/([A-Za-z0-9_-]{11})/)?.[1]}
@@ -3293,7 +3330,7 @@ export default function RoomPage() {
           ) : (
             <iframe
               key={room.watchUrl}
-              src={isKnownPlatform ? room.watchUrl : `/api/proxy?url=${encodeURIComponent(room.watchUrl)}`}
+              src={room.watchUrl}
               allow="autoplay; fullscreen; picture-in-picture"
               allowFullScreen
               style={{ position: 'absolute', top: watchCrop ? -65 : 0, left: 0, width: '100%', height: watchCrop ? 'calc(100% + 65px)' : '100%', border: 'none', display: 'block' }}
@@ -3383,7 +3420,8 @@ export default function RoomPage() {
     const isYt = /youtube\.com\/embed/.test(room.watchUrl)
     const isDm = /dailymotion\.com\/embed/.test(room.watchUrl)
     const isBili = /player\.bilibili\.com/.test(room.watchUrl)
-    const isKnownPlatform = isYt || isDm || isBili || /player\.vimeo\.com/.test(room.watchUrl)
+    const isHls = isHlsUrl(room.watchUrl)
+    const isKnownPlatform = isYt || isDm || isBili || /player\.vimeo\.com/.test(room.watchUrl) || isHls
     const fmtTime = s => { const m = Math.floor(s / 60); const sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, '0')}` }
     return (
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0a0a0a', position: 'relative' }}>
@@ -3445,7 +3483,13 @@ export default function RoomPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
             {/* Video fills remaining height */}
             <div style={{ flex: 1, position: 'relative', background: '#000', overflow: 'hidden', minHeight: 0, borderRadius: '0 0 14px 14px' }}>
-              {isYt ? (
+              {isHls ? (
+                <HlsPlayer
+                  key={room.watchUrl}
+                  src={room.watchUrl}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: '#000' }}
+                />
+              ) : isYt ? (
                 <YouTube
                   key={room.watchUrl}
                   videoId={room.watchUrl.match(/embed\/([A-Za-z0-9_-]{11})/)?.[1]}
@@ -3456,7 +3500,7 @@ export default function RoomPage() {
               ) : (
                 <iframe
                   key={room.watchUrl}
-                  src={isKnownPlatform ? room.watchUrl : `/api/proxy?url=${encodeURIComponent(room.watchUrl)}`}
+                  src={room.watchUrl}
                   allow="autoplay; fullscreen; picture-in-picture"
                   allowFullScreen
                   style={{ position: 'absolute', top: watchCrop ? -65 : 0, left: 0, width: '100%', height: watchCrop ? 'calc(100% + 65px)' : '100%', border: 'none', display: 'block' }}
